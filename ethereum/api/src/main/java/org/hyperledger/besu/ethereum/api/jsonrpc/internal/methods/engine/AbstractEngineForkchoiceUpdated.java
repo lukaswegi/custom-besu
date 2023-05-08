@@ -206,10 +206,10 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
 
     final boolean newTimestampGreaterThanHead =
         payloadAttributes.getTimestamp() > headBlockHeader.getTimestamp();
-    return newTimestampGreaterThanHead
+    return newTimestampGreaterThanHead;
         /*&& getWithdrawalsValidator(
                 protocolSchedule, headBlockHeader, payloadAttributes.getTimestamp())
-            .validateWithdrawals(maybeWithdrawals)*/;
+            .validateWithdrawals(maybeWithdrawals)*/
   }
 
   private JsonRpcResponse handleNonValidForkchoiceUpdate(
