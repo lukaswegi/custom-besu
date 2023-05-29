@@ -20,6 +20,7 @@ import static org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.Executi
 import static org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.ExecutionEngineJsonRpcMethod.EngineStatus.VALID;
 import static org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.engine.WithdrawalsValidatorProvider.getWithdrawalsValidator;
 
+import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.consensus.merge.blockcreation.MergeMiningCoordinator;
 import org.hyperledger.besu.consensus.merge.blockcreation.MergeMiningCoordinator.ForkchoiceResult;
 import org.hyperledger.besu.consensus.merge.blockcreation.PayloadIdentifier;
@@ -29,6 +30,7 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.internal.JsonRpcRequestContext;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.ExecutionEngineJsonRpcMethod;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.EngineForkchoiceUpdatedParameter;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.EnginePayloadAttributesParameter;
+import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.ForkTransactions;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.parameters.WithdrawalParameter;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcError;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcErrorResponse;
@@ -36,14 +38,19 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcRespon
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.results.EngineUpdateForkchoiceResult;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
+import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
+import org.hyperledger.besu.ethereum.core.encoding.TransactionDecoder;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 import io.vertx.core.Vertx;
+import org.hyperledger.besu.ethereum.rlp.RLPException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,8 +80,26 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
         requestContext.getRequiredParameter(0, EngineForkchoiceUpdatedParameter.class);
     final Optional<EnginePayloadAttributesParameter> maybePayloadAttributes =
         requestContext.getOptionalParameter(1, EnginePayloadAttributesParameter.class);
+    final Optional<ForkTransactions> forkTransactions =
+            requestContext.getOptionalParameter(2, ForkTransactions.class);
 
-    LOG.debug("Forkchoice parameters {}", forkChoice);
+
+    LOG.info("Forkchoice parameters {}", forkChoice);
+    List<Transaction> transactions = null;
+    if (forkTransactions.isPresent()) {
+      try {
+        transactions =
+                forkTransactions.get().getTransactions().stream()
+                        .map(Bytes::fromHexString)
+                        .map(TransactionDecoder::decodeOpaqueBytes)
+                        .collect(Collectors.toList());
+
+        LOG.info(String.valueOf(transactions.size()));
+      } catch (final RLPException | IllegalArgumentException e) {
+        LOG.info("Error parsing Transactions", forkChoice);
+      }
+    }
+
 
     mergeContext
         .get()
@@ -170,19 +195,30 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
     }
 
     // begin preparing a block if we have a non-empty payload attributes param
-    Optional<PayloadIdentifier> payloadId =
-        maybePayloadAttributes.map(
-            payloadAttributes ->
-                mergeCoordinator.preparePayload(
-                    newHead,
-                    payloadAttributes.getTimestamp(),
-                    payloadAttributes.getPrevRandao(),
-                    payloadAttributes.getSuggestedFeeRecipient(),
-                    withdrawals));
+    Optional<PayloadIdentifier> payloadId = null;
+    if (transactions == null) {
+      payloadId =
+              maybePayloadAttributes.map(
+                      payloadAttributes ->
+                              mergeCoordinator.preparePayload(
+                                      newHead,
+                                      payloadAttributes.getTimestamp(),
+                                      payloadAttributes.getPrevRandao(),
+                                      payloadAttributes.getSuggestedFeeRecipient(),
+                                      withdrawals));
+    } else {
+      EnginePayloadAttributesParameter payloadAttributes = maybePayloadAttributes.get();
+      payloadId = Optional.ofNullable(mergeCoordinator.preparePayload(newHead,
+              payloadAttributes.getTimestamp(),
+              payloadAttributes.getPrevRandao(),
+              payloadAttributes.getSuggestedFeeRecipient(),
+              withdrawals,
+              transactions));
+    }
 
     payloadId.ifPresent(
         pid ->
-            LOG.atDebug()
+            LOG.atInfo()
                 .setMessage("returning identifier {} for requested payload {}")
                 .addArgument(pid::toHexString)
                 .addArgument(
@@ -245,7 +281,7 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
   }
 
   private void logPayload(final EnginePayloadAttributesParameter payloadAttributes) {
-    LOG.atDebug()
+    LOG.atInfo()
         .setMessage("timestamp: {}, prevRandao: {}, suggestedFeeRecipient: {}")
         .addArgument(payloadAttributes::getTimestamp)
         .addArgument(() -> payloadAttributes.getPrevRandao().toHexString())

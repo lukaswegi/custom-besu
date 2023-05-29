@@ -353,7 +353,7 @@ public class BonsaiWorldState
   @Override
   public void persist(final BlockHeader blockHeader) {
     final Optional<BlockHeader> maybeBlockHeader = Optional.ofNullable(blockHeader);
-    LOG.atDebug()
+    LOG.atInfo()
         .setMessage("Persist world state for block {}")
         .addArgument(maybeBlockHeader)
         .log();

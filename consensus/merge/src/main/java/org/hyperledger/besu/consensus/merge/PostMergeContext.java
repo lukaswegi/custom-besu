@@ -237,7 +237,7 @@ public class PostMergeContext implements MergeContext {
       maybeCurrBestBlock.ifPresentOrElse(
           currBestBlock -> {
             if (compareByGasUsedDesc.compare(newBlockWithReceipts, currBestBlock) < 0) {
-              LOG.atDebug()
+              LOG.atInfo()
                   .setMessage("New proposal for payloadId {} {} is better than the previous one {}")
                   .addArgument(payloadId)
                   .addArgument(() -> logBlockProposal(newBlockWithReceipts.getBlock()))

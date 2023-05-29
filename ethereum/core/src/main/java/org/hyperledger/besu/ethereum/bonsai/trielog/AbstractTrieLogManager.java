@@ -119,7 +119,7 @@ public abstract class AbstractTrieLogManager implements TrieLogManager {
       final Hash worldStateRootHash,
       final TrieLogLayer trieLog,
       final BonsaiUpdater stateUpdater) {
-    LOG.atDebug()
+    LOG.atInfo()
         .setMessage("Persisting trie log for block hash {} and world state root {}")
         .addArgument(blockHeader::toLogString)
         .addArgument(worldStateRootHash::toHexString)

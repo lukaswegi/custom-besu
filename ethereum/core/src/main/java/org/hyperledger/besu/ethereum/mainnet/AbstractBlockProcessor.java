@@ -180,13 +180,13 @@ public abstract class AbstractBlockProcessor implements BlockProcessor {
     try {
       worldState.persist(blockHeader);
     } catch (MerkleTrieException e) {
-      LOG.trace("Merkle trie exception during Transaction processing ", e);
+      LOG.info("Merkle trie exception during Transaction processing ", e);
       if (worldState instanceof BonsaiWorldState) {
         ((BonsaiWorldStateUpdateAccumulator) worldState.updater()).reset();
       }
       throw e;
     } catch (Exception e) {
-      LOG.error("failed persisting block", e);
+      LOG.info("failed persisting block", e);
       return new BlockProcessingResult(Optional.empty(), e);
     }
 

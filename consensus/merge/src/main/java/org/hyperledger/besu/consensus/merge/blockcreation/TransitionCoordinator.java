@@ -153,6 +153,13 @@ public class TransitionCoordinator extends TransitionUtils<MiningCoordinator>
   }
 
   @Override
+  public PayloadIdentifier preparePayload(final BlockHeader parentHeader, final Long timestamp, final Bytes32 prevRandao, final Address feeRecipient, final Optional<List<Withdrawal>> withdrawals, final List<Transaction> transactions) {
+    return mergeCoordinator.preparePayload(
+            parentHeader, timestamp, prevRandao, feeRecipient, withdrawals, transactions
+    );
+  }
+
+  @Override
   public BlockProcessingResult rememberBlock(final Block block) {
     return mergeCoordinator.rememberBlock(block);
   }

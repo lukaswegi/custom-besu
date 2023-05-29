@@ -447,3 +447,4 @@ public abstract class AbstractBlockCreator implements AsyncBlockCreator {
     Address getMiningBeneficiary(long blockNumber);
   }
 }
+
