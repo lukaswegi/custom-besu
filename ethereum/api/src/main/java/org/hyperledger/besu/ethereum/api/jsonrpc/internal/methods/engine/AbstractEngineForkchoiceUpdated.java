@@ -40,6 +40,7 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.internal.results.EngineUpdateFo
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.core.Withdrawal;
+import org.hyperledger.besu.ethereum.core.encoding.EncodingContext;
 import org.hyperledger.besu.ethereum.core.encoding.TransactionDecoder;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ScheduledProtocolSpec;
@@ -103,7 +104,7 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
         transactions =
                 forkTransactions.get().getTransactions().stream()
                         .map(Bytes::fromHexString)
-                        .map(TransactionDecoder::decodeOpaqueBytes)
+                        .map(in -> TransactionDecoder.decodeOpaqueBytes(in, EncodingContext.BLOCK_BODY))
                         .collect(Collectors.toList());
 
         LOG.info(String.valueOf(transactions.size()));
@@ -225,8 +226,9 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
 
     // begin preparing a block if we have a non-empty payload attributes param
     final Optional<List<Withdrawal>> finalWithdrawals = withdrawals;
+    Optional<PayloadIdentifier> payloadId;
     if (transactions == null) {
-      Optional<PayloadIdentifier> payloadId =
+      payloadId =
               maybePayloadAttributes.map(
                       payloadAttributes ->
                               mergeCoordinator.preparePayload(
@@ -243,7 +245,7 @@ public abstract class AbstractEngineForkchoiceUpdated extends ExecutionEngineJso
               payloadAttributes.getPrevRandao(),
               payloadAttributes.getSuggestedFeeRecipient(),
               finalWithdrawals,
-                      Optional.ofNullable(payloadAttributes.getParentBeaconBlockRoot()),
+              Optional.ofNullable(payloadAttributes.getParentBeaconBlockRoot()),
               transactions));
     }
 

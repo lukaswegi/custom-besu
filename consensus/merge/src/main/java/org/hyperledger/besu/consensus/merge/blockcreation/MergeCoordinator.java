@@ -334,7 +334,7 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
           final Bytes32 prevRandao,
           final Address feeRecipient,
           final Optional<List<Withdrawal>> withdrawals,
-          final Optional<Bytes32> parentBeaconBlockRoot
+          final Optional<Bytes32> parentBeaconBlockRoot,
           final List<Transaction> transactions) {
 
     // we assume that preparePayload is always called sequentially, since the RPC Engine calls
@@ -342,7 +342,12 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
     // shared data structures
     final PayloadIdentifier payloadIdentifier =
             PayloadIdentifier.forPayloadParams(
-                    parentHeader.getBlockHash(), timestamp, prevRandao, feeRecipient, withdrawals);
+                    parentHeader.getBlockHash(),
+                    timestamp,
+                    prevRandao,
+                    feeRecipient,
+                    withdrawals,
+                    parentBeaconBlockRoot);
 
     if (blockCreationTasks.containsKey(payloadIdentifier)) {
       LOG.info(
@@ -361,18 +366,23 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
     // put the empty block in first
     final Block emptyBlock =
             mergeBlockCreator
-                    .createBlock(Optional.of(transactions), prevRandao, timestamp, withdrawals)
+                    .createBlock(
+                            Optional.of(transactions),
+                            prevRandao,
+                            timestamp,
+                            withdrawals,
+                            parentBeaconBlockRoot)
                     .getBlock();
 
     BlockProcessingResult result = validateProposedBlock(emptyBlock);
     if (result.isSuccessful()) {
       mergeContext.putPayloadById(
-              payloadIdentifier, new BlockWithReceipts(emptyBlock, result.getReceipts()));
-      LOG.atInfo()
-              .setMessage("Built empty block proposal {} for payload {}")
-              .addArgument(emptyBlock::toLogString)
-              .addArgument(payloadIdentifier)
-              .log();
+              new PayloadWrapper(
+                      payloadIdentifier, new BlockWithReceipts(emptyBlock, result.getReceipts())));
+      LOG.info(
+              "Start building proposals for block {} identified by {}",
+              emptyBlock.getHeader().getNumber(),
+              payloadIdentifier);
     } else {
       LOG.warn(
               "failed to validate empty block proposal {}, reason {}",
