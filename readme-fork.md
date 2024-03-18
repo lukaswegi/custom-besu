@@ -1,5 +1,6 @@
 ### Build Besu
 ./gradlew build -x test -x javadoc -x checkSpdxHeader -x spotlessJavaCheck
+
 ./gradlew installDist
 
  build/install/besu/bin/besu \
