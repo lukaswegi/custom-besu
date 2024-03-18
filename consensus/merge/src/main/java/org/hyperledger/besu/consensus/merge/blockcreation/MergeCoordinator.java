@@ -334,6 +334,7 @@ public class MergeCoordinator implements MergeMiningCoordinator, BadChainListene
           final Bytes32 prevRandao,
           final Address feeRecipient,
           final Optional<List<Withdrawal>> withdrawals,
+          final Optional<Bytes32> parentBeaconBlockRoot
           final List<Transaction> transactions) {
 
     // we assume that preparePayload is always called sequentially, since the RPC Engine calls
