@@ -23,6 +23,7 @@ import static org.mockito.Mockito.mock;
 import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.ethereum.ConsensusContext;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.chain.GenesisState;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
@@ -35,23 +36,22 @@ import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.mainnet.ScheduleBasedBlockHeaderFunctions;
 import org.hyperledger.besu.ethereum.util.RawBlockIterator;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 import org.hyperledger.besu.testutil.BlockTestUtil;
 import org.hyperledger.besu.testutil.BlockTestUtil.ChainResources;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import com.google.common.base.Charsets;
 import com.google.common.io.Resources;
-import org.junit.rules.TemporaryFolder;
 
 public class BlockchainSetupUtil {
   private final GenesisState genesisState;
@@ -113,6 +113,10 @@ public class BlockchainSetupUtil {
     return createForEthashChain(BlockTestUtil.getTestChainResources(), storageFormat);
   }
 
+  public static BlockchainSetupUtil forHiveTesting(final DataStorageFormat storageFormat) {
+    return createForEthashChain(BlockTestUtil.getHiveTestChainResources(), storageFormat);
+  }
+
   public static BlockchainSetupUtil forMainnet() {
     return createForEthashChain(BlockTestUtil.getMainnetResources(), DataStorageFormat.FOREST);
   }
@@ -138,7 +142,10 @@ public class BlockchainSetupUtil {
   private static ProtocolSchedule mainnetProtocolScheduleProvider(
       final GenesisConfigFile genesisConfigFile) {
     return MainnetProtocolSchedule.fromConfig(
-        genesisConfigFile.getConfigOptions(), EvmConfiguration.DEFAULT);
+        genesisConfigFile.getConfigOptions(),
+        EvmConfiguration.DEFAULT,
+        MiningParameters.newDefault(),
+        new BadBlockManager());
   }
 
   private static ProtocolContext mainnetProtocolContextProvider(
@@ -151,7 +158,8 @@ public class BlockchainSetupUtil {
           public <C extends ConsensusContext> C as(final Class<C> klass) {
             return null;
           }
-        });
+        },
+        new BadBlockManager());
   }
 
   private static BlockchainSetupUtil create(
@@ -160,10 +168,9 @@ public class BlockchainSetupUtil {
       final ProtocolScheduleProvider protocolScheduleProvider,
       final ProtocolContextProvider protocolContextProvider,
       final EthScheduler scheduler) {
-    final TemporaryFolder temp = new TemporaryFolder();
     try {
-      temp.create();
-      final String genesisJson = Resources.toString(chainResources.getGenesisURL(), Charsets.UTF_8);
+      final String genesisJson =
+          Resources.toString(chainResources.getGenesisURL(), StandardCharsets.UTF_8);
 
       final GenesisConfigFile genesisConfigFile = GenesisConfigFile.fromConfig(genesisJson);
       final ProtocolSchedule protocolSchedule = protocolScheduleProvider.get(genesisConfigFile);
@@ -184,8 +191,7 @@ public class BlockchainSetupUtil {
       final BlockHeaderFunctions blockHeaderFunctions =
           ScheduleBasedBlockHeaderFunctions.create(protocolSchedule);
       try (final RawBlockIterator iterator =
-          new RawBlockIterator(
-              blocksPath, rlp -> BlockHeader.readFrom(rlp, blockHeaderFunctions))) {
+          new RawBlockIterator(blocksPath, blockHeaderFunctions)) {
         while (iterator.hasNext()) {
           blocks.add(iterator.next());
         }
@@ -201,8 +207,6 @@ public class BlockchainSetupUtil {
           scheduler);
     } catch (final IOException | URISyntaxException ex) {
       throw new IllegalStateException(ex);
-    } finally {
-      temp.delete();
     }
   }
 

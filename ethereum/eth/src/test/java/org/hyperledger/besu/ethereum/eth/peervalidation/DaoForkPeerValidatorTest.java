@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class DaoForkPeerValidatorTest extends AbstractPeerBlockValidatorTest {
 
@@ -97,5 +97,29 @@ public class DaoForkPeerValidatorTest extends AbstractPeerBlockValidatorTest {
     assertThat(daoBlockRequested).isTrue();
     assertThat(result).isDone();
     assertThat(result).isCompletedWithValue(false);
+  }
+
+  @Test
+  public void validatePeer_responsivePeerDoesNotHaveBlockWhenPastForkHeight() {
+    final EthProtocolManager ethProtocolManager = EthProtocolManagerTestUtil.create();
+    final long daoBlockNumber = 500;
+
+    final PeerValidator validator =
+        new DaoForkPeerValidator(
+            ProtocolScheduleFixture.MAINNET, new NoOpMetricsSystem(), daoBlockNumber, 0);
+
+    final RespondingEthPeer peer =
+        EthProtocolManagerTestUtil.createPeer(ethProtocolManager, daoBlockNumber);
+
+    final CompletableFuture<Boolean> result =
+        validator.validatePeer(ethProtocolManager.ethContext(), peer.getEthPeer());
+
+    assertThat(result).isNotDone();
+
+    // Respond to block header request with empty
+    peer.respond(RespondingEthPeer.emptyResponder());
+
+    assertThat(result).isDone();
+    assertThat(result).isCompletedWithValue(true);
   }
 }

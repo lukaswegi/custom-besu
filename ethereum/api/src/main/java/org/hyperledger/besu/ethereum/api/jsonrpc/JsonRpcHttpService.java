@@ -320,6 +320,7 @@ public class JsonRpcHttpService {
         .route()
         .handler(
             BodyHandler.create()
+                .setBodyLimit(config.getMaxRequestContentLength())
                 .setUploadsDirectory(dataDir.resolve("uploads").toString())
                 .setDeleteUploadedFilesOnEnd(true));
     router.route("/").method(HttpMethod.GET).handler(this::handleEmptyRequest);
@@ -579,7 +580,7 @@ public class JsonRpcHttpService {
       return "";
     }
     if (config.getCorsAllowedDomains().contains("*")) {
-      return ".*";
+      return ".*://.*";
     } else {
       final StringJoiner stringJoiner = new StringJoiner("|");
       config.getCorsAllowedDomains().stream().filter(s -> !s.isEmpty()).forEach(stringJoiner::add);

@@ -17,14 +17,18 @@ package org.hyperledger.besu.ethereum.eth.manager.ethtaskutils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.spy;
 
-import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.crypto.KeyPair;
+import org.hyperledger.besu.crypto.SECPPrivateKey;
+import org.hyperledger.besu.crypto.SECPPublicKey;
+import org.hyperledger.besu.datatypes.Address;
+import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.BlockchainSetupUtil;
 import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.eth.EthProtocol;
 import org.hyperledger.besu.ethereum.eth.EthProtocolConfiguration;
-import org.hyperledger.besu.ethereum.eth.manager.DeterministicEthScheduler;
 import org.hyperledger.besu.ethereum.eth.manager.EthContext;
 import org.hyperledger.besu.ethereum.eth.manager.EthMessages;
 import org.hyperledger.besu.ethereum.eth.manager.EthPeer;
@@ -35,13 +39,15 @@ import org.hyperledger.besu.ethereum.eth.manager.EthScheduler;
 import org.hyperledger.besu.ethereum.eth.manager.RespondingEthPeer;
 import org.hyperledger.besu.ethereum.eth.manager.task.EthTask;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
+import org.hyperledger.besu.ethereum.eth.transactions.BlobCache;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfiguration;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolFactory;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
+import org.hyperledger.besu.testutil.DeterministicEthScheduler;
 import org.hyperledger.besu.testutil.TestClock;
 
 import java.time.ZoneId;
@@ -52,9 +58,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.tuweni.bytes.Bytes32;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * @param <T> The type of data being requested from the network
@@ -62,6 +69,19 @@ import org.junit.Test;
  */
 public abstract class AbstractMessageTaskTest<T, R> {
   protected static final int MAX_PEERS = 5;
+  protected static final KeyPair genesisAccountKeyPair =
+      new KeyPair(
+          SECPPrivateKey.create(
+              Bytes32.fromHexString(
+                  "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8"),
+              "ECDSA"),
+          SECPPublicKey.create(
+              Bytes.fromHexString(
+                  "0x3a514176466fa815ed481ffad09110a2d344f6c9b78c1d14afc351c3a51be33d8072e77939dc03ba44790779b7a1025baf3003f6732430e20cd9b76d953391b3"),
+              "ECDSA"));
+  protected static final Address genesisAccountSender =
+      Address.extract(Hash.hash(genesisAccountKeyPair.getPublicKey().getEncodedBytes()));
+  protected static final long genesisAccountNonce = 32;
   protected static Blockchain blockchain;
   protected static ProtocolSchedule protocolSchedule;
   protected static ProtocolContext protocolContext;
@@ -73,7 +93,7 @@ public abstract class AbstractMessageTaskTest<T, R> {
   protected AtomicBoolean peersDoTimeout;
   protected AtomicInteger peerCountToTimeout;
 
-  @BeforeClass
+  @BeforeAll
   public static void setup() {
     final BlockchainSetupUtil blockchainSetupUtil =
         BlockchainSetupUtil.forTesting(DataStorageFormat.FOREST);
@@ -84,8 +104,9 @@ public abstract class AbstractMessageTaskTest<T, R> {
     assertThat(blockchainSetupUtil.getMaxBlockNumber()).isGreaterThanOrEqualTo(20L);
   }
 
-  @Before
+  @BeforeEach
   public void setupTest() {
+    protocolContext.getBadBlockManager().reset();
     peersDoTimeout = new AtomicBoolean(false);
     peerCountToTimeout = new AtomicInteger(0);
     ethPeers =
@@ -98,7 +119,6 @@ public abstract class AbstractMessageTaskTest<T, R> {
                 EthProtocolConfiguration.DEFAULT_MAX_MESSAGE_SIZE,
                 Collections.emptyList(),
                 Bytes.random(64),
-                MAX_PEERS,
                 MAX_PEERS,
                 MAX_PEERS,
                 false));
@@ -117,8 +137,11 @@ public abstract class AbstractMessageTaskTest<T, R> {
             TestClock.system(ZoneId.systemDefault()),
             metricsSystem,
             syncState,
-            new MiningParameters.Builder().minTransactionGasPrice(Wei.ONE).build(),
-            TransactionPoolConfiguration.DEFAULT);
+            TransactionPoolConfiguration.DEFAULT,
+            new BlobCache(),
+            MiningParameters.newDefault());
+    transactionPool.setEnabled();
+
     ethProtocolManager =
         EthProtocolManagerTestUtil.create(
             blockchain,
@@ -141,11 +164,9 @@ public abstract class AbstractMessageTaskTest<T, R> {
   @Test
   public void completesWhenPeersAreResponsive() {
     // Setup a responsive peer
-    final RespondingEthPeer.Responder responder =
-        RespondingEthPeer.blockchainResponder(
-            blockchain, protocolContext.getWorldStateArchive(), transactionPool);
+    final RespondingEthPeer.Responder responder = getFullResponder();
     final RespondingEthPeer respondingPeer =
-        EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 1000);
+        EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 32);
 
     // Setup data to be requested and expected response
     final T requestedData = generateDataToBeRequested();
@@ -164,12 +185,13 @@ public abstract class AbstractMessageTaskTest<T, R> {
 
     assertThat(done).isTrue();
     assertResultMatchesExpectation(requestedData, actualResult.get(), respondingPeer.getEthPeer());
+    assertNoBadBlocks();
   }
 
   @Test
   public void doesNotCompleteWhenPeersDoNotRespond() {
     // Setup a unresponsive peer
-    EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 1000);
+    EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 32);
 
     // Setup data to be requested
     final T requestedData = generateDataToBeRequested();
@@ -188,7 +210,7 @@ public abstract class AbstractMessageTaskTest<T, R> {
   @Test
   public void cancel() {
     // Setup a unresponsive peer
-    EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 1000);
+    EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 32);
 
     // Setup data to be requested
     final T requestedData = generateDataToBeRequested();
@@ -202,5 +224,16 @@ public abstract class AbstractMessageTaskTest<T, R> {
     assertThat(future.isDone()).isTrue();
     assertThat(future.isCancelled()).isTrue();
     assertThat(task.run().isCancelled()).isTrue();
+  }
+
+  protected RespondingEthPeer.Responder getFullResponder() {
+    return RespondingEthPeer.blockchainResponder(
+        blockchain, protocolContext.getWorldStateArchive(), transactionPool);
+  }
+
+  protected void assertNoBadBlocks() {
+    BadBlockManager badBlockManager = protocolContext.getBadBlockManager();
+    assertThat(badBlockManager.getBadBlocks().size()).isEqualTo(0);
+    assertThat(badBlockManager.getBadHeaders().size()).isEqualTo(0);
   }
 }

@@ -33,16 +33,16 @@ import org.hyperledger.besu.ethereum.eth.sync.fastsync.FastSyncState;
 import org.hyperledger.besu.ethereum.eth.sync.range.RangeHeadersFetcher;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -59,7 +59,7 @@ public class RangeHeadersFetcherTest {
   private Responder responder;
   private RespondingEthPeer respondingPeer;
 
-  @BeforeClass
+  @BeforeAll
   public static void setUpClass() {
     final BlockchainSetupUtil blockchainSetupUtil =
         BlockchainSetupUtil.forTesting(DataStorageFormat.FOREST);
@@ -70,7 +70,7 @@ public class RangeHeadersFetcherTest {
     protocolContext = blockchainSetupUtil.getProtocolContext();
   }
 
-  @Before
+  @BeforeEach
   public void setUpTest() {
     ethProtocolManager =
         EthProtocolManagerTestUtil.create(

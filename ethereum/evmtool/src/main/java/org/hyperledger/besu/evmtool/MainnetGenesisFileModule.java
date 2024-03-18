@@ -17,7 +17,11 @@ package org.hyperledger.besu.evmtool;
 
 import org.hyperledger.besu.config.GenesisConfigOptions;
 import org.hyperledger.besu.config.StubGenesisConfigOptions;
+import org.hyperledger.besu.crypto.SignatureAlgorithmFactory;
+import org.hyperledger.besu.crypto.SignatureAlgorithmType;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeaderFunctions;
+import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.mainnet.MainnetBlockHeaderFunctions;
 import org.hyperledger.besu.ethereum.mainnet.MainnetProtocolSchedule;
@@ -32,6 +36,8 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.inject.Named;
+
+import picocli.CommandLine;
 
 class MainnetGenesisFileModule extends GenesisFileModule {
 
@@ -48,7 +54,21 @@ class MainnetGenesisFileModule extends GenesisFileModule {
   ProtocolSchedule provideProtocolSchedule(
       final GenesisConfigOptions configOptions,
       @Named("Fork") final Optional<String> fork,
-      @Named("RevertReasonEnabled") final boolean revertReasonEnabled) {
+      @Named("RevertReasonEnabled") final boolean revertReasonEnabled,
+      final EvmConfiguration evmConfiguration) {
+
+    final Optional<String> ecCurve = configOptions.getEcCurve();
+    if (ecCurve.isEmpty()) {
+      SignatureAlgorithmFactory.setDefaultInstance();
+    } else {
+      try {
+        SignatureAlgorithmFactory.setInstance(SignatureAlgorithmType.create(ecCurve.get()));
+      } catch (final IllegalArgumentException e) {
+        throw new CommandLine.InitializationException(
+            "Invalid genesis file configuration for ecCurve. " + e.getMessage());
+      }
+    }
+
     if (fork.isPresent()) {
       var schedules = createSchedules();
       var schedule = schedules.get(fork.map(String::toLowerCase).get());
@@ -56,7 +76,8 @@ class MainnetGenesisFileModule extends GenesisFileModule {
         return schedule.get();
       }
     }
-    return MainnetProtocolSchedule.fromConfig(configOptions, EvmConfiguration.DEFAULT);
+    return MainnetProtocolSchedule.fromConfig(
+        configOptions, evmConfiguration, MiningParameters.newDefault(), new BadBlockManager());
   }
 
   public static Map<String, Supplier<ProtocolSchedule>> createSchedules() {
@@ -94,6 +115,9 @@ class MainnetGenesisFileModule extends GenesisFileModule {
             "cancun",
             createSchedule(new StubGenesisConfigOptions().cancunTime(0).baseFeePerGas(0x0a))),
         Map.entry(
+            "prague",
+            createSchedule(new StubGenesisConfigOptions().pragueTime(0).baseFeePerGas(0x0a))),
+        Map.entry(
             "futureeips",
             createSchedule(new StubGenesisConfigOptions().futureEipsTime(0).baseFeePerGas(0x0a))),
         Map.entry(
@@ -110,7 +134,9 @@ class MainnetGenesisFileModule extends GenesisFileModule {
                 ProtocolSpecAdapters.create(0, Function.identity()),
                 PrivacyParameters.DEFAULT,
                 false,
-                EvmConfiguration.DEFAULT)
+                EvmConfiguration.DEFAULT,
+                MiningParameters.MINING_DISABLED,
+                new BadBlockManager())
             .createProtocolSchedule();
   }
 }

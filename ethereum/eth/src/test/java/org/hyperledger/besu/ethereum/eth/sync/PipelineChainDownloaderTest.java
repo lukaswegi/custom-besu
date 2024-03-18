@@ -52,7 +52,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 public class PipelineChainDownloaderTest {
 
-  @Mock private SyncTargetManager syncTargetManager;
+  @Mock private AbstractSyncTargetManager syncTargetManager;
   @Mock private DownloadPipelineFactory downloadPipelineFactory;
   @Mock private EthScheduler scheduler;
   @Mock private Pipeline<?> downloadPipeline;
@@ -318,7 +318,7 @@ public class PipelineChainDownloaderTest {
     if (isCancelled) {
       chainDownloader.cancel();
     }
-    selectTargetFuture.completeExceptionally(new InvalidBlockException("", 1, null));
+    selectTargetFuture.completeExceptionally(InvalidBlockException.create("Failed"));
 
     verify(syncState, times(1)).disconnectSyncTarget(DisconnectReason.BREACH_OF_PROTOCOL);
   }

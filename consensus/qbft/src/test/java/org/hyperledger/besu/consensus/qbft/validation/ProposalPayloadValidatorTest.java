@@ -40,6 +40,7 @@ import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.BlockProcessingResult;
 import org.hyperledger.besu.ethereum.BlockValidator;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockDataGenerator;
@@ -54,13 +55,13 @@ import java.util.List;
 import java.util.Optional;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class ProposalPayloadValidatorTest {
 
   @Mock private BlockValidator blockValidator;
@@ -80,13 +81,14 @@ public class ProposalPayloadValidatorTest {
       ConsensusRoundHelpers.createFrom(targetRound, 1, 0);
   final QbftExtraDataCodec bftExtraDataCodec = new QbftExtraDataCodec();
 
-  @Before
+  @BeforeEach
   public void setup() {
     protocolContext =
         new ProtocolContext(
             blockChain,
             worldStateArchive,
-            setupContextWithBftExtraDataEncoder(QbftContext.class, emptyList(), bftExtraDataCodec));
+            setupContextWithBftExtraDataEncoder(QbftContext.class, emptyList(), bftExtraDataCodec),
+            new BadBlockManager());
   }
 
   @Test
@@ -239,7 +241,7 @@ public class ProposalPayloadValidatorTest {
         setupContextWithBftExtraDataEncoder(QbftContext.class, emptyList(), pkiQbftExtraDataCodec);
     final Bytes cms = Bytes.fromHexStringLenient("0x1");
     final ProtocolContext protocolContext =
-        new ProtocolContext(blockChain, worldStateArchive, qbftContext);
+        new ProtocolContext(blockChain, worldStateArchive, qbftContext, new BadBlockManager());
 
     final ProposalPayloadValidator payloadValidator =
         new ProposalPayloadValidator(
@@ -274,7 +276,7 @@ public class ProposalPayloadValidatorTest {
         setupContextWithBftExtraDataEncoder(QbftContext.class, emptyList(), pkiQbftExtraDataCodec);
     final Bytes cms = Bytes.fromHexStringLenient("0x1");
     final ProtocolContext protocolContext =
-        new ProtocolContext(blockChain, worldStateArchive, qbftContext);
+        new ProtocolContext(blockChain, worldStateArchive, qbftContext, new BadBlockManager());
 
     final ProposalPayloadValidator payloadValidator =
         new ProposalPayloadValidator(

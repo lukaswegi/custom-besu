@@ -16,7 +16,7 @@
 package org.hyperledger.besu.tests.acceptance.plugins;
 
 import org.hyperledger.besu.datatypes.Hash;
-import org.hyperledger.besu.tests.acceptance.dsl.AcceptanceTestBase;
+import org.hyperledger.besu.tests.acceptance.dsl.AcceptanceTestBaseJunit5;
 import org.hyperledger.besu.tests.acceptance.dsl.account.Account;
 import org.hyperledger.besu.tests.acceptance.dsl.blockchain.Amount;
 import org.hyperledger.besu.tests.acceptance.dsl.node.BesuNode;
@@ -28,7 +28,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class PermissioningPluginTest extends AcceptanceTestBase {
+public class PermissioningPluginTest extends AcceptanceTestBaseJunit5 {
   private BesuNode minerNode;
 
   private BesuNode aliceNode;
@@ -37,22 +37,13 @@ public class PermissioningPluginTest extends AcceptanceTestBase {
 
   @BeforeEach
   public void setUp() throws Exception {
-    final BesuNodeConfigurationBuilder builder =
-        new BesuNodeConfigurationBuilder()
-            .miningEnabled(false)
-            .plugins(List.of("testPlugins"))
-            .extraCLIOptions(List.of("--plugin-permissioning-test-enabled=true"))
-            .jsonRpcEnabled()
-            .jsonRpcTxPool()
-            .jsonRpcAdmin();
+    minerNode = besu.create(createNodeBuilder().name("miner").build());
 
-    minerNode = besu.create(builder.name("miner").build());
+    aliceNode = besu.create(createNodeBuilder().name("alice").keyFilePath("key").build());
 
-    aliceNode = besu.create(builder.name("alice").keyFilePath("key").build());
+    bobNode = besu.create(createNodeBuilder().name("bob").keyFilePath("key1").build());
 
-    bobNode = besu.create(builder.name("bob").keyFilePath("key1").build());
-
-    charlieNode = besu.create(builder.name("charlie").keyFilePath("key2").build());
+    charlieNode = besu.create(createNodeBuilder().name("charlie").keyFilePath("key2").build());
 
     cluster.start(minerNode, charlieNode);
 
@@ -61,6 +52,16 @@ public class PermissioningPluginTest extends AcceptanceTestBase {
 
     cluster.startNode(bobNode);
     bobNode.awaitPeerDiscovery(net.awaitPeerCount(2));
+  }
+
+  private BesuNodeConfigurationBuilder createNodeBuilder() {
+    return new BesuNodeConfigurationBuilder()
+        .miningEnabled(false)
+        .plugins(List.of("testPlugins"))
+        .extraCLIOptions(List.of("--plugin-permissioning-test-enabled=true"))
+        .jsonRpcEnabled()
+        .jsonRpcTxPool()
+        .jsonRpcAdmin();
   }
 
   @Test

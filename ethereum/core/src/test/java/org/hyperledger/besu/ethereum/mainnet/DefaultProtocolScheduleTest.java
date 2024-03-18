@@ -20,8 +20,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import org.hyperledger.besu.config.StubGenesisConfigOptions;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
+import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.evm.internal.EvmConfiguration;
 
@@ -30,8 +32,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import org.assertj.core.api.Assertions;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class DefaultProtocolScheduleTest {
 
@@ -46,7 +48,7 @@ public class DefaultProtocolScheduleTest {
 
   private final long FIRST_TIMESTAMP_FORK = 9991L;
 
-  @Before
+  @BeforeEach
   public void setup() {
     config = new StubGenesisConfigOptions();
     config.chainId(DEFAULT_CHAIN_ID);
@@ -58,7 +60,9 @@ public class DefaultProtocolScheduleTest {
             ProtocolSpecAdapters.create(FIRST_TIMESTAMP_FORK, modifier),
             privacyParameters,
             isRevertReasonEnabled,
-            evmConfiguration);
+            evmConfiguration,
+            MiningParameters.MINING_DISABLED,
+            new BadBlockManager());
   }
 
   @Test

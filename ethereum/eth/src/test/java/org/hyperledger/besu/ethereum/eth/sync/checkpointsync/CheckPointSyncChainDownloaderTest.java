@@ -36,26 +36,25 @@ import org.hyperledger.besu.ethereum.eth.sync.fastsync.checkpoint.Checkpoint;
 import org.hyperledger.besu.ethereum.eth.sync.fastsync.checkpoint.ImmutableCheckpoint;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
+import org.hyperledger.besu.ethereum.trie.bonsai.storage.BonsaiWorldStateKeyValueStorage;
+import org.hyperledger.besu.ethereum.trie.forest.storage.ForestWorldStateKeyValueStorage;
+import org.hyperledger.besu.ethereum.worldstate.WorldStateKeyValueStorage;
+import org.hyperledger.besu.ethereum.worldstate.WorldStateStorageCoordinator;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameters;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.ArgumentsProvider;
+import org.junit.jupiter.params.provider.ArgumentsSource;
 
-@RunWith(Parameterized.class)
 public class CheckPointSyncChainDownloaderTest {
-
-  private final WorldStateStorage worldStateStorage = mock(WorldStateStorage.class);
 
   protected ProtocolSchedule protocolSchedule;
   protected EthProtocolManager ethProtocolManager;
@@ -68,23 +67,36 @@ public class CheckPointSyncChainDownloaderTest {
   protected Blockchain otherBlockchain;
   private Checkpoint checkpoint;
 
-  @Parameters
-  public static Collection<Object[]> data() {
-    return Arrays.asList(new Object[][] {{DataStorageFormat.BONSAI}, {DataStorageFormat.FOREST}});
+  private WorldStateStorageCoordinator worldStateStorageCoordinator;
+
+  static class CheckPointSyncChainDownloaderTestArguments implements ArgumentsProvider {
+    @Override
+    public Stream<? extends Arguments> provideArguments(final ExtensionContext context) {
+      return Stream.of(
+          Arguments.of(DataStorageFormat.BONSAI), Arguments.of(DataStorageFormat.FOREST));
+    }
   }
 
-  private final DataStorageFormat storageFormat;
+  public void setup(final DataStorageFormat dataStorageFormat) {
+    final WorldStateKeyValueStorage worldStateKeyValueStorage;
+    if (dataStorageFormat.equals(DataStorageFormat.BONSAI)) {
+      worldStateKeyValueStorage = mock(BonsaiWorldStateKeyValueStorage.class);
+      when(((BonsaiWorldStateKeyValueStorage) worldStateKeyValueStorage)
+              .isWorldStateAvailable(any(), any()))
+          .thenReturn(true);
+    } else {
+      worldStateKeyValueStorage = mock(ForestWorldStateKeyValueStorage.class);
+      when(((ForestWorldStateKeyValueStorage) worldStateKeyValueStorage)
+              .isWorldStateAvailable(any()))
+          .thenReturn(true);
+    }
+    when(worldStateKeyValueStorage.getDataStorageFormat()).thenReturn(dataStorageFormat);
+    worldStateStorageCoordinator = new WorldStateStorageCoordinator(worldStateKeyValueStorage);
 
-  public CheckPointSyncChainDownloaderTest(final DataStorageFormat storageFormat) {
-    this.storageFormat = storageFormat;
-  }
-
-  @Before
-  public void setup() {
-    when(worldStateStorage.isWorldStateAvailable(any(), any())).thenReturn(true);
-    final BlockchainSetupUtil localBlockchainSetup = BlockchainSetupUtil.forTesting(storageFormat);
+    final BlockchainSetupUtil localBlockchainSetup =
+        BlockchainSetupUtil.forTesting(dataStorageFormat);
     localBlockchain = localBlockchainSetup.getBlockchain();
-    otherBlockchainSetup = BlockchainSetupUtil.forTesting(storageFormat);
+    otherBlockchainSetup = BlockchainSetupUtil.forTesting(dataStorageFormat);
     otherBlockchain = otherBlockchainSetup.getBlockchain();
     protocolSchedule = localBlockchainSetup.getProtocolSchedule();
     protocolContext = localBlockchainSetup.getProtocolContext();
@@ -111,7 +123,7 @@ public class CheckPointSyncChainDownloaderTest {
             Optional.of(checkpoint));
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     ethProtocolManager.stop();
   }
@@ -120,7 +132,7 @@ public class CheckPointSyncChainDownloaderTest {
       final SynchronizerConfiguration syncConfig, final long pivotBlockNumber) {
     return CheckpointSyncChainDownloader.create(
         syncConfig,
-        worldStateStorage,
+        worldStateStorageCoordinator,
         protocolSchedule,
         protocolContext,
         ethContext,
@@ -129,8 +141,10 @@ public class CheckPointSyncChainDownloaderTest {
         new FastSyncState(otherBlockchain.getBlockHeader(pivotBlockNumber).get()));
   }
 
-  @Test
-  public void shouldSyncToPivotBlockInMultipleSegments() {
+  @ParameterizedTest
+  @ArgumentsSource(CheckPointSyncChainDownloaderTestArguments.class)
+  public void shouldSyncToPivotBlockInMultipleSegments(final DataStorageFormat storageFormat) {
+    setup(storageFormat);
     otherBlockchainSetup.importFirstBlocks(30);
 
     final RespondingEthPeer peer =
@@ -163,8 +177,10 @@ public class CheckPointSyncChainDownloaderTest {
         .isEqualTo(otherBlockchain.getBlockHeader(pivotBlockNumber).get());
   }
 
-  @Test
-  public void shouldSyncToPivotBlockInSingleSegment() {
+  @ParameterizedTest
+  @ArgumentsSource(CheckPointSyncChainDownloaderTestArguments.class)
+  public void shouldSyncToPivotBlockInSingleSegment(final DataStorageFormat storageFormat) {
+    setup(storageFormat);
     otherBlockchainSetup.importFirstBlocks(30);
 
     final RespondingEthPeer peer =

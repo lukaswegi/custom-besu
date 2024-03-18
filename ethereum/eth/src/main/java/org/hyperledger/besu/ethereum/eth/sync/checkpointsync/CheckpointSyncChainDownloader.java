@@ -20,17 +20,17 @@ import org.hyperledger.besu.ethereum.eth.sync.PipelineChainDownloader;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
 import org.hyperledger.besu.ethereum.eth.sync.fastsync.FastSyncChainDownloader;
 import org.hyperledger.besu.ethereum.eth.sync.fastsync.FastSyncState;
-import org.hyperledger.besu.ethereum.eth.sync.fastsync.FastSyncTargetManager;
+import org.hyperledger.besu.ethereum.eth.sync.fastsync.SyncTargetManager;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
+import org.hyperledger.besu.ethereum.worldstate.WorldStateStorageCoordinator;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 
 public class CheckpointSyncChainDownloader extends FastSyncChainDownloader {
 
   public static ChainDownloader create(
       final SynchronizerConfiguration config,
-      final WorldStateStorage worldStateStorage,
+      final WorldStateStorageCoordinator worldStateStorageCoordinator,
       final ProtocolSchedule protocolSchedule,
       final ProtocolContext protocolContext,
       final EthContext ethContext,
@@ -38,10 +38,10 @@ public class CheckpointSyncChainDownloader extends FastSyncChainDownloader {
       final MetricsSystem metricsSystem,
       final FastSyncState fastSyncState) {
 
-    final FastSyncTargetManager syncTargetManager =
-        new FastSyncTargetManager(
+    final SyncTargetManager syncTargetManager =
+        new SyncTargetManager(
             config,
-            worldStateStorage,
+            worldStateStorageCoordinator,
             protocolSchedule,
             protocolContext,
             ethContext,

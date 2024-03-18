@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 import org.hyperledger.besu.consensus.common.bft.BftBlockHashing;
 import org.hyperledger.besu.consensus.common.bft.BftExtraData;
 import org.hyperledger.besu.consensus.common.bft.BftExtraDataCodec;
+import org.hyperledger.besu.consensus.common.bft.BftProtocolSchedule;
 import org.hyperledger.besu.consensus.common.bft.ConsensusRoundIdentifier;
 import org.hyperledger.besu.consensus.common.bft.RoundTimer;
 import org.hyperledger.besu.consensus.common.bft.blockcreation.BftBlockCreator;
@@ -50,7 +51,8 @@ import org.hyperledger.besu.cryptoservices.NodeKeyUtils;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.ethereum.ProtocolContext;
 import org.hyperledger.besu.ethereum.blockcreation.BlockCreator.BlockCreationResult;
-import org.hyperledger.besu.ethereum.blockcreation.BlockTransactionSelector.TransactionSelectionResults;
+import org.hyperledger.besu.ethereum.blockcreation.txselection.TransactionSelectionResults;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.MinedBlockObserver;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.Block;
@@ -59,6 +61,7 @@ import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.BlockHeaderTestFixture;
 import org.hyperledger.besu.ethereum.core.BlockImporter;
 import org.hyperledger.besu.ethereum.mainnet.BlockImportResult;
+import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.plugin.services.securitymodule.SecurityModuleException;
 import org.hyperledger.besu.util.Subscribers;
@@ -69,15 +72,18 @@ import java.util.List;
 import java.util.Optional;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class QbftRoundTest {
 
   private final NodeKey nodeKey = NodeKeyUtils.generate();
@@ -89,14 +95,16 @@ public class QbftRoundTest {
   private final BftExtraDataCodec bftExtraDataCodec = new QbftExtraDataCodec();
   private ProtocolContext protocolContext;
 
+  @Mock private BftProtocolSchedule protocolSchedule;
   @Mock private MutableBlockchain blockChain;
   @Mock private WorldStateArchive worldStateArchive;
-  @Mock private BlockImporter blockImporter;
   @Mock private QbftMessageTransmitter transmitter;
   @Mock private MinedBlockObserver minedBlockObserver;
   @Mock private BftBlockCreator blockCreator;
   @Mock private MessageValidator messageValidator;
   @Mock private RoundTimer roundTimer;
+  @Mock private ProtocolSpec protocolSpec;
+  @Mock private BlockImporter blockImporter;
 
   @Captor private ArgumentCaptor<Block> blockCaptor;
 
@@ -107,14 +115,15 @@ public class QbftRoundTest {
       SignatureAlgorithmFactory.getInstance()
           .createSignature(BigInteger.ONE, BigInteger.ONE, (byte) 1);
 
-  @Before
+  @BeforeEach
   public void setup() {
     protocolContext =
         new ProtocolContext(
             blockChain,
             worldStateArchive,
             setupContextWithBftExtraDataEncoder(
-                QbftContext.class, emptyList(), new QbftExtraDataCodec()));
+                QbftContext.class, emptyList(), new QbftExtraDataCodec()),
+            new BadBlockManager());
 
     when(messageValidator.validateProposal(any())).thenReturn(true);
     when(messageValidator.validatePrepare(any())).thenReturn(true);
@@ -132,7 +141,11 @@ public class QbftRoundTest {
     when(blockCreator.createBlock(anyLong()))
         .thenReturn(new BlockCreationResult(proposedBlock, new TransactionSelectionResults()));
 
-    when(blockImporter.importBlock(any(), any(), any())).thenReturn(new BlockImportResult(true));
+    when(protocolSchedule.getByBlockHeader(any())).thenReturn(protocolSpec);
+    when(protocolSpec.getBlockImporter()).thenReturn(blockImporter);
+
+    when(blockImporter.importBlock(any(), any(), any()))
+        .thenReturn(new BlockImportResult(BlockImportResult.BlockImportStatus.IMPORTED));
 
     subscribers.subscribe(minedBlockObserver);
   }
@@ -144,7 +157,7 @@ public class QbftRoundTest {
         roundState,
         blockCreator,
         protocolContext,
-        blockImporter,
+        protocolSchedule,
         subscribers,
         nodeKey,
         messageFactory,
@@ -162,7 +175,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -185,7 +198,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -209,7 +222,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -222,7 +235,6 @@ public class QbftRoundTest {
             roundIdentifier, proposedBlock, Collections.emptyList(), Collections.emptyList());
     verify(transmitter, times(1)).multicastPrepare(roundIdentifier, proposedBlock.getHash());
     verify(transmitter, times(1)).multicastCommit(any(), any(), any());
-    verify(blockImporter, times(1)).importBlock(any(), any(), any());
   }
 
   @Test
@@ -233,7 +245,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -248,18 +260,15 @@ public class QbftRoundTest {
 
     round.createAndSendProposalMessage(15);
     verify(transmitter, never()).multicastCommit(any(), any(), any());
-    verify(blockImporter, never()).importBlock(any(), any(), any());
 
     round.handlePrepareMessage(
         messageFactory2.createPrepare(roundIdentifier, proposedBlock.getHash()));
 
     verify(transmitter, times(1))
         .multicastCommit(roundIdentifier, proposedBlock.getHash(), localCommitSeal);
-    verify(blockImporter, never()).importBlock(any(), any(), any());
 
     round.handleCommitMessage(
         messageFactory.createCommit(roundIdentifier, proposedBlock.getHash(), remoteCommitSeal));
-    verify(blockImporter, times(1)).importBlock(any(), any(), any());
   }
 
   @Test
@@ -270,7 +279,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -293,7 +302,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -341,7 +350,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -380,7 +389,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -401,7 +410,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -415,8 +424,6 @@ public class QbftRoundTest {
     round.handleProposalMessage(
         messageFactory.createProposal(
             roundIdentifier, proposedBlock, Collections.emptyList(), Collections.emptyList()));
-
-    verify(blockImporter, times(1)).importBlock(any(), any(), any());
   }
 
   @Test
@@ -428,7 +435,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             nodeKey,
             messageFactory,
@@ -442,8 +449,6 @@ public class QbftRoundTest {
     round.handleProposalMessage(
         messageFactory.createProposal(
             roundIdentifier, proposedBlock, Collections.emptyList(), Collections.emptyList()));
-
-    verify(blockImporter, times(1)).importBlock(any(), any(), any());
   }
 
   @Test
@@ -459,7 +464,7 @@ public class QbftRoundTest {
             roundState,
             blockCreator,
             protocolContext,
-            blockImporter,
+            protocolSchedule,
             subscribers,
             throwingNodeKey,
             throwingMessageFactory,

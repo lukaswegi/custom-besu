@@ -1,5 +1,5 @@
 /*
- * Copyright ConsenSys AG.
+ * Copyright Hyperledger Besu Contributors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,60 +12,42 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+
 package org.hyperledger.besu.config;
 
 import java.util.Map;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
+import org.immutables.value.Value;
 
-/** The Clique config options. */
-public class CliqueConfigOptions {
-
-  /** The constant DEFAULT. */
-  public static final CliqueConfigOptions DEFAULT =
-      new CliqueConfigOptions(JsonUtil.createEmptyObjectNode());
-
-  private static final long DEFAULT_EPOCH_LENGTH = 30_000;
-  private static final int DEFAULT_BLOCK_PERIOD_SECONDS = 15;
-
-  private final ObjectNode cliqueConfigRoot;
+/** Configuration options for the Clique consensus mechanism. */
+@Value.Immutable
+public interface CliqueConfigOptions {
 
   /**
-   * Instantiates a new Clique config options.
-   *
-   * @param cliqueConfigRoot the clique config root
-   */
-  CliqueConfigOptions(final ObjectNode cliqueConfigRoot) {
-    this.cliqueConfigRoot = cliqueConfigRoot;
-  }
-
-  /**
-   * Gets epoch length.
+   * The number of blocks in an epoch.
    *
    * @return the epoch length
    */
-  public long getEpochLength() {
-    return JsonUtil.getLong(cliqueConfigRoot, "epochlength", DEFAULT_EPOCH_LENGTH);
-  }
+  long getEpochLength();
 
   /**
    * Gets block period seconds.
    *
    * @return the block period seconds
    */
-  public int getBlockPeriodSeconds() {
-    return JsonUtil.getPositiveInt(
-        cliqueConfigRoot, "blockperiodseconds", DEFAULT_BLOCK_PERIOD_SECONDS);
-  }
+  int getBlockPeriodSeconds();
 
   /**
-   * As map.
+   * Gets create empty blocks.
+   *
+   * @return whether empty blocks are permitted
+   */
+  boolean getCreateEmptyBlocks();
+
+  /**
+   * A map of the config options.
    *
    * @return the map
    */
-  Map<String, Object> asMap() {
-    return ImmutableMap.of(
-        "epochLength", getEpochLength(), "blockPeriodSeconds", getBlockPeriodSeconds());
-  }
+  Map<String, Object> asMap();
 }

@@ -35,7 +35,7 @@ public class LondonFeeMarket implements BaseFeeMarket {
 
   private static final Wei DEFAULT_BASEFEE_FLOOR = Wei.of(7L);
 
-  private final Wei baseFeeInitialValue;
+  protected final Wei baseFeeInitialValue;
   private final long londonForkBlockNumber;
   private final TransactionPriceCalculator txPriceCalculator;
   private final Wei baseFeeFloor;
@@ -46,7 +46,14 @@ public class LondonFeeMarket implements BaseFeeMarket {
 
   public LondonFeeMarket(
       final long londonForkBlockNumber, final Optional<Wei> baseFeePerGasOverride) {
-    this.txPriceCalculator = TransactionPriceCalculator.eip1559();
+    this(TransactionPriceCalculator.eip1559(), londonForkBlockNumber, baseFeePerGasOverride);
+  }
+
+  protected LondonFeeMarket(
+      final TransactionPriceCalculator txPriceCalculator,
+      final long londonForkBlockNumber,
+      final Optional<Wei> baseFeePerGasOverride) {
+    this.txPriceCalculator = txPriceCalculator;
     this.londonForkBlockNumber = londonForkBlockNumber;
     this.baseFeeInitialValue = baseFeePerGasOverride.orElse(DEFAULT_BASEFEE_INITIAL_VALUE);
     this.baseFeeFloor = baseFeeInitialValue.isZero() ? Wei.ZERO : DEFAULT_BASEFEE_FLOOR;

@@ -31,7 +31,7 @@ import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class RequiredBlocksPeerValidatorTest extends AbstractPeerBlockValidatorTest {
 
@@ -101,6 +101,28 @@ public class RequiredBlocksPeerValidatorTest extends AbstractPeerBlockValidatorT
     final AtomicBoolean requiredBlockRequested = respondToBlockRequest(peer, requiredBlock);
 
     assertThat(requiredBlockRequested).isTrue();
+    assertThat(result).isDone();
+    assertThat(result).isCompletedWithValue(false);
+  }
+
+  @Test
+  public void validatePeer_responsivePeerDoesNotHaveBlockWhenPastForkHeight() {
+    final EthProtocolManager ethProtocolManager = EthProtocolManagerTestUtil.create();
+
+    final PeerValidator validator =
+        new RequiredBlocksPeerValidator(
+            ProtocolScheduleFixture.MAINNET, new NoOpMetricsSystem(), 1, Hash.ZERO);
+
+    final RespondingEthPeer peer = EthProtocolManagerTestUtil.createPeer(ethProtocolManager, 1);
+
+    final CompletableFuture<Boolean> result =
+        validator.validatePeer(ethProtocolManager.ethContext(), peer.getEthPeer());
+
+    assertThat(result).isNotDone();
+
+    // Respond to block header request with empty
+    peer.respond(RespondingEthPeer.emptyResponder());
+
     assertThat(result).isDone();
     assertThat(result).isCompletedWithValue(false);
   }

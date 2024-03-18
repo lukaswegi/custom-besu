@@ -26,7 +26,7 @@ import org.hyperledger.besu.ethereum.trie.patricia.RemoveVisitor;
 import org.hyperledger.besu.ethereum.trie.patricia.SimpleMerklePatriciaTrie;
 import org.hyperledger.besu.ethereum.trie.patricia.StoredMerklePatriciaTrie;
 import org.hyperledger.besu.ethereum.worldstate.StateTrieAccountValue;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
+import org.hyperledger.besu.ethereum.worldstate.WorldStateStorageCoordinator;
 
 import java.util.HashMap;
 import java.util.List;
@@ -42,12 +42,16 @@ import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.units.bigints.UInt256;
 
+/**
+ * The WorldStateProofProvider class is responsible for providing proofs for world state entries. It
+ * interacts with the underlying storage and trie data structures to generate proofs.
+ */
 public class WorldStateProofProvider {
 
-  private final WorldStateStorage worldStateStorage;
+  private final WorldStateStorageCoordinator worldStateStorageCoordinator;
 
-  public WorldStateProofProvider(final WorldStateStorage worldStateStorage) {
-    this.worldStateStorage = worldStateStorage;
+  public WorldStateProofProvider(final WorldStateStorageCoordinator worldStateStorageCoordinator) {
+    this.worldStateStorageCoordinator = worldStateStorageCoordinator;
   }
 
   public Optional<WorldStateProof> getAccountProof(
@@ -55,10 +59,10 @@ public class WorldStateProofProvider {
       final Address accountAddress,
       final List<UInt256> accountStorageKeys) {
 
-    if (!worldStateStorage.isWorldStateAvailable(worldStateRoot, null)) {
+    if (!worldStateStorageCoordinator.isWorldStateAvailable(worldStateRoot, null)) {
       return Optional.empty();
     } else {
-      final Hash accountHash = Hash.hash(accountAddress);
+      final Hash accountHash = accountAddress.addressHash();
       final Proof<Bytes> accountProof =
           newAccountStateTrie(worldStateRoot).getValueWithProof(accountHash);
 
@@ -87,34 +91,66 @@ public class WorldStateProofProvider {
     return storageProofs;
   }
 
+  /**
+   * Retrieves the proof-related nodes for an account in the specified world state.
+   *
+   * @param worldStateRoot The root hash of the world state.
+   * @param accountHash The hash of the account.
+   * @return A list of proof-related nodes for the account.
+   */
   public List<Bytes> getAccountProofRelatedNodes(
-      final Hash worldStateRoot, final Bytes accountHash) {
+      final Hash worldStateRoot, final Bytes32 accountHash) {
     final Proof<Bytes> accountProof =
         newAccountStateTrie(worldStateRoot).getValueWithProof(accountHash);
     return accountProof.getProofRelatedNodes();
   }
 
+  /**
+   * Retrieves the proof-related nodes for a storage slot in the specified account storage trie.
+   *
+   * @param storageRoot The root hash of the account storage trie.
+   * @param accountHash The hash of the account.
+   * @param slotHash The hash of the storage slot.
+   * @return A list of proof-related nodes for the storage slot.
+   */
+  public List<Bytes> getStorageProofRelatedNodes(
+      final Bytes32 storageRoot, final Bytes32 accountHash, final Bytes32 slotHash) {
+    final Proof<Bytes> storageProof =
+        newAccountStorageTrie(Hash.wrap(accountHash), storageRoot).getValueWithProof(slotHash);
+    return storageProof.getProofRelatedNodes();
+  }
+
   private MerkleTrie<Bytes, Bytes> newAccountStateTrie(final Bytes32 rootHash) {
     return new StoredMerklePatriciaTrie<>(
-        worldStateStorage::getAccountStateTrieNode, rootHash, b -> b, b -> b);
+        worldStateStorageCoordinator::getAccountStateTrieNode, rootHash, b -> b, b -> b);
   }
 
   private MerkleTrie<Bytes32, Bytes> newAccountStorageTrie(
       final Hash accountHash, final Bytes32 rootHash) {
     return new StoredMerklePatriciaTrie<>(
         (location, hash) ->
-            worldStateStorage.getAccountStorageTrieNode(accountHash, location, hash),
+            worldStateStorageCoordinator.getAccountStorageTrieNode(accountHash, location, hash),
         rootHash,
         b -> b,
         b -> b);
   }
 
+  /**
+   * Checks if a range proof is valid for a given range of keys.
+   *
+   * @param startKeyHash The hash of the starting key in the range.
+   * @param endKeyHash The hash of the ending key in the range.
+   * @param rootHash The root hash of the Merkle Trie.
+   * @param proofs The list of proofs for the keys in the range.
+   * @param keys The TreeMap of key-value pairs representing the range.
+   * @return {@code true} if the range proof is valid, {@code false} otherwise.
+   */
   public boolean isValidRangeProof(
       final Bytes32 startKeyHash,
       final Bytes32 endKeyHash,
       final Bytes32 rootHash,
       final List<Bytes> proofs,
-      final TreeMap<Bytes32, Bytes> keys) {
+      final SortedMap<Bytes32, Bytes> keys) {
 
     // check if it's monotonic increasing
     if (!Ordering.natural().isOrdered(keys.keySet())) {

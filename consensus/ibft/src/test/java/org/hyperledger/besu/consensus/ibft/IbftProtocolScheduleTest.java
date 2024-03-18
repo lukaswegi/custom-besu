@@ -37,8 +37,10 @@ import org.hyperledger.besu.cryptoservices.NodeKey;
 import org.hyperledger.besu.cryptoservices.NodeKeyUtils;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.MilestoneStreamingProtocolSchedule;
+import org.hyperledger.besu.ethereum.core.MiningParameters;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Util;
 import org.hyperledger.besu.ethereum.mainnet.HeaderValidationMode;
@@ -48,8 +50,8 @@ import java.math.BigInteger;
 import java.util.Collection;
 import java.util.List;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class IbftProtocolScheduleTest {
   private final BftExtraDataCodec bftExtraDataCodec = mock(BftExtraDataCodec.class);
@@ -58,7 +60,7 @@ public class IbftProtocolScheduleTest {
   private final Address proposerAddress = Util.publicKeyToAddress(proposerNodeKey.getPublicKey());
   private final List<Address> validators = singletonList(proposerAddress);
 
-  @Before
+  @BeforeEach
   public void setup() {
     when(bftExtraDataCodec.decode(any())).thenReturn(bftExtraData);
     when(bftExtraData.getValidators()).thenReturn(validators);
@@ -99,7 +101,9 @@ public class IbftProtocolScheduleTest {
         PrivacyParameters.DEFAULT,
         false,
         bftExtraDataCodec,
-        EvmConfiguration.DEFAULT);
+        EvmConfiguration.DEFAULT,
+        MiningParameters.MINING_DISABLED,
+        new BadBlockManager());
   }
 
   private boolean validateHeader(
@@ -109,7 +113,7 @@ public class IbftProtocolScheduleTest {
       final BlockHeader blockHeader,
       final int block) {
     return schedule
-        .getByBlockNumber(block)
+        .getByBlockNumberOrTimestamp(block, blockHeader.getTimestamp())
         .getBlockHeaderValidator()
         .validateHeader(
             blockHeader, parentHeader, protocolContext(validators), HeaderValidationMode.LIGHT);
@@ -119,6 +123,7 @@ public class IbftProtocolScheduleTest {
     return new ProtocolContext(
         null,
         null,
-        setupContextWithBftExtraDataEncoder(BftContext.class, validators, bftExtraDataCodec));
+        setupContextWithBftExtraDataEncoder(BftContext.class, validators, bftExtraDataCodec),
+        new BadBlockManager());
   }
 }

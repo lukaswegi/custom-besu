@@ -19,6 +19,7 @@ import static org.hyperledger.besu.consensus.clique.CliqueHelpers.installCliqueB
 import org.hyperledger.besu.config.CliqueConfigOptions;
 import org.hyperledger.besu.consensus.clique.CliqueBlockInterface;
 import org.hyperledger.besu.consensus.clique.CliqueContext;
+import org.hyperledger.besu.consensus.clique.CliqueForksSchedulesFactory;
 import org.hyperledger.besu.consensus.clique.CliqueMiningTracker;
 import org.hyperledger.besu.consensus.clique.CliqueProtocolSchedule;
 import org.hyperledger.besu.consensus.clique.blockcreation.CliqueBlockScheduler;
@@ -27,6 +28,7 @@ import org.hyperledger.besu.consensus.clique.blockcreation.CliqueMiningCoordinat
 import org.hyperledger.besu.consensus.clique.jsonrpc.CliqueJsonRpcMethods;
 import org.hyperledger.besu.consensus.common.BlockInterface;
 import org.hyperledger.besu.consensus.common.EpochManager;
+import org.hyperledger.besu.consensus.common.ForksSchedule;
 import org.hyperledger.besu.consensus.common.validator.blockbased.BlockValidatorProvider;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.ethereum.ProtocolContext;
@@ -52,17 +54,17 @@ public class CliqueBesuControllerBuilder extends BesuControllerBuilder {
 
   private Address localAddress;
   private EpochManager epochManager;
-  private long secondsBetweenBlocks;
   private final BlockInterface blockInterface = new CliqueBlockInterface();
+  private ForksSchedule<CliqueConfigOptions> forksSchedule;
 
   @Override
   protected void prepForBuild() {
     localAddress = Util.publicKeyToAddress(nodeKey.getPublicKey());
     final CliqueConfigOptions cliqueConfig = configOptionsSupplier.get().getCliqueConfigOptions();
     final long blocksPerEpoch = cliqueConfig.getEpochLength();
-    secondsBetweenBlocks = cliqueConfig.getBlockPeriodSeconds();
 
     epochManager = new EpochManager(blocksPerEpoch);
+    forksSchedule = CliqueForksSchedulesFactory.create(configOptionsSupplier.get());
   }
 
   @Override
@@ -83,21 +85,35 @@ public class CliqueBesuControllerBuilder extends BesuControllerBuilder {
         new CliqueMinerExecutor(
             protocolContext,
             protocolSchedule,
-            transactionPool.getPendingTransactions(),
+            transactionPool,
             nodeKey,
             miningParameters,
             new CliqueBlockScheduler(
                 clock,
                 protocolContext.getConsensusContext(CliqueContext.class).getValidatorProvider(),
                 localAddress,
-                secondsBetweenBlocks),
-            epochManager);
+                forksSchedule),
+            epochManager,
+            forksSchedule,
+            ethProtocolManager.ethContext().getScheduler());
     final CliqueMiningCoordinator miningCoordinator =
         new CliqueMiningCoordinator(
             protocolContext.getBlockchain(),
             miningExecutor,
             syncState,
             new CliqueMiningTracker(localAddress, protocolContext));
+
+    // Update the next block period in seconds according to the transition schedule
+    protocolContext
+        .getBlockchain()
+        .observeBlockAdded(
+            o ->
+                miningParameters.setBlockPeriodSeconds(
+                    forksSchedule
+                        .getFork(o.getBlock().getHeader().getNumber() + 1)
+                        .getValue()
+                        .getBlockPeriodSeconds()));
+
     miningCoordinator.addMinedBlockObserver(ethProtocolManager);
 
     // Clique mining is implicitly enabled.
@@ -109,10 +125,13 @@ public class CliqueBesuControllerBuilder extends BesuControllerBuilder {
   protected ProtocolSchedule createProtocolSchedule() {
     return CliqueProtocolSchedule.create(
         configOptionsSupplier.get(),
+        forksSchedule,
         nodeKey,
         privacyParameters,
         isRevertReasonEnabled,
-        evmConfiguration);
+        evmConfiguration,
+        miningParameters,
+        badBlockManager);
   }
 
   @Override
@@ -148,6 +167,6 @@ public class CliqueBesuControllerBuilder extends BesuControllerBuilder {
   @Override
   public MiningParameters getMiningParameterOverrides(final MiningParameters fromCli) {
     // Clique mines by default, reflect that with in the mining parameters:
-    return new MiningParameters.Builder(fromCli).miningEnabled(true).build();
+    return fromCli.setMiningEnabled(true);
   }
 }

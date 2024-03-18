@@ -92,8 +92,8 @@ public class RetryingGetHeadersEndingAtFromPeerByHashTask
     return executeSubTask(task::run)
         .thenApply(
             peerResult -> {
-              LOG.debug(
-                  "Get {} block headers by hash {} from peer {} has result {}",
+              LOG.trace(
+                  "Got {} block headers by hash {} from peer {} has result {}",
                   count,
                   referenceHash,
                   currentPeer,
@@ -104,7 +104,7 @@ public class RetryingGetHeadersEndingAtFromPeerByHashTask
                     "No block headers for hash "
                         + referenceHash
                         + " returned by peer "
-                        + currentPeer.getShortNodeId());
+                        + currentPeer.getLoggableId());
               }
               result.complete(peerResult.getResult());
               return peerResult.getResult();

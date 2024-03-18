@@ -25,30 +25,36 @@ import org.hyperledger.besu.ethereum.eth.sync.snapsync.request.AccountRangeDataR
 import org.hyperledger.besu.ethereum.eth.sync.snapsync.request.BytecodeRequest;
 import org.hyperledger.besu.ethereum.eth.sync.snapsync.request.SnapDataRequest;
 import org.hyperledger.besu.ethereum.eth.sync.snapsync.request.StorageRangeDataRequest;
+import org.hyperledger.besu.ethereum.trie.bonsai.storage.BonsaiWorldStateKeyValueStorage;
 import org.hyperledger.besu.ethereum.trie.patricia.StoredMerklePatriciaTrie;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
+import org.hyperledger.besu.ethereum.worldstate.DataStorageConfiguration;
+import org.hyperledger.besu.ethereum.worldstate.WorldStateStorageCoordinator;
 import org.hyperledger.besu.services.tasks.Task;
 
 import java.util.List;
 
 import org.apache.tuweni.bytes.Bytes;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class PersistDataStepTest {
 
-  private final WorldStateStorage worldStateStorage =
-      new InMemoryKeyValueStorageProvider().createWorldStateStorage(DataStorageFormat.FOREST);
-  private final SnapSyncState snapSyncState = mock(SnapSyncState.class);
+  private final WorldStateStorageCoordinator worldStateStorageCoordinator =
+      new InMemoryKeyValueStorageProvider()
+          .createWorldStateStorageCoordinator(DataStorageConfiguration.DEFAULT_CONFIG);
+
+  private final SnapSyncProcessState snapSyncState = mock(SnapSyncProcessState.class);
   private final SnapWorldDownloadState downloadState = mock(SnapWorldDownloadState.class);
 
-  private final PersistDataStep persistDataStep =
-      new PersistDataStep(snapSyncState, worldStateStorage, downloadState);
+  private final SnapSyncConfiguration snapSyncConfiguration = mock(SnapSyncConfiguration.class);
 
-  @Before
+  private final PersistDataStep persistDataStep =
+      new PersistDataStep(
+          snapSyncState, worldStateStorageCoordinator, downloadState, snapSyncConfiguration);
+
+  @BeforeEach
   public void setUp() {
-    when(downloadState.getMetricsManager()).thenReturn(mock(SnapsyncMetricsManager.class));
+    when(downloadState.getMetricsManager()).thenReturn(mock(SnapSyncMetricsManager.class));
   }
 
   @Test
@@ -67,7 +73,10 @@ public class PersistDataStepTest {
     final List<Task<SnapDataRequest>> result = persistDataStep.persist(tasks);
 
     assertThat(result).isSameAs(tasks);
-    assertThat(worldStateStorage.getNodeData(Bytes.EMPTY, tasks.get(0).getData().getRootHash()))
+    assertThat(
+            worldStateStorageCoordinator
+                .getStrategy(BonsaiWorldStateKeyValueStorage.class)
+                .getTrieNodeUnsafe(tasks.get(0).getData().getRootHash()))
         .isEmpty();
   }
 
@@ -78,14 +87,17 @@ public class PersistDataStepTest {
             final AccountRangeDataRequest data = (AccountRangeDataRequest) task.getData();
             StoredMerklePatriciaTrie<Bytes, Bytes> trie =
                 new StoredMerklePatriciaTrie<>(
-                    worldStateStorage::getAccountStateTrieNode, data.getRootHash(), b -> b, b -> b);
+                    worldStateStorageCoordinator::getAccountStateTrieNode,
+                    data.getRootHash(),
+                    b -> b,
+                    b -> b);
             data.getAccounts().forEach((key, value) -> assertThat(trie.get(key)).isPresent());
           } else if (task.getData() instanceof StorageRangeDataRequest) {
             final StorageRangeDataRequest data = (StorageRangeDataRequest) task.getData();
             final StoredMerklePatriciaTrie<Bytes, Bytes> trie =
                 new StoredMerklePatriciaTrie<>(
                     (location, hash) ->
-                        worldStateStorage.getAccountStorageTrieNode(
+                        worldStateStorageCoordinator.getAccountStorageTrieNode(
                             Hash.wrap(data.getAccountHash()), location, hash),
                     data.getStorageRoot(),
                     b -> b,
@@ -94,7 +106,9 @@ public class PersistDataStepTest {
           } else if (task.getData() instanceof BytecodeRequest) {
             final BytecodeRequest data = (BytecodeRequest) task.getData();
             assertThat(
-                    worldStateStorage.getCode(data.getCodeHash(), Hash.wrap(data.getAccountHash())))
+                    worldStateStorageCoordinator
+                        .getStrategy(BonsaiWorldStateKeyValueStorage.class)
+                        .getCode(Hash.wrap(data.getCodeHash()), Hash.wrap(data.getAccountHash())))
                 .isPresent();
           } else {
             fail("not expected message");

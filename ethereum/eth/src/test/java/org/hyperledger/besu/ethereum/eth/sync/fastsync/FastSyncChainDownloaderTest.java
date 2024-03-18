@@ -35,26 +35,25 @@ import org.hyperledger.besu.ethereum.eth.sync.ChainDownloader;
 import org.hyperledger.besu.ethereum.eth.sync.SynchronizerConfiguration;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
-import org.hyperledger.besu.ethereum.worldstate.DataStorageFormat;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
+import org.hyperledger.besu.ethereum.worldstate.WorldStateStorageCoordinator;
 import org.hyperledger.besu.metrics.noop.NoOpMetricsSystem;
+import org.hyperledger.besu.plugin.services.storage.DataStorageFormat;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.LockSupport;
+import java.util.stream.Stream;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameters;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.ArgumentsProvider;
+import org.junit.jupiter.params.provider.ArgumentsSource;
 
-@RunWith(Parameterized.class)
 public class FastSyncChainDownloaderTest {
 
-  private final WorldStateStorage worldStateStorage = mock(WorldStateStorage.class);
+  private final WorldStateStorageCoordinator worldStateStorageCoordinator =
+      mock(WorldStateStorageCoordinator.class);
 
   protected ProtocolSchedule protocolSchedule;
   protected EthProtocolManager ethProtocolManager;
@@ -66,20 +65,17 @@ public class FastSyncChainDownloaderTest {
   private BlockchainSetupUtil otherBlockchainSetup;
   protected Blockchain otherBlockchain;
 
-  @Parameters
-  public static Collection<Object[]> data() {
-    return Arrays.asList(new Object[][] {{DataStorageFormat.BONSAI}, {DataStorageFormat.FOREST}});
+  static class FastSyncChainDownloaderTestArguments implements ArgumentsProvider {
+    @Override
+    public Stream<? extends Arguments> provideArguments(final ExtensionContext context) {
+      return Stream.of(
+          Arguments.of(DataStorageFormat.BONSAI), Arguments.of(DataStorageFormat.FOREST));
+    }
   }
 
-  private final DataStorageFormat storageFormat;
-
-  public FastSyncChainDownloaderTest(final DataStorageFormat storageFormat) {
-    this.storageFormat = storageFormat;
-  }
-
-  @Before
-  public void setup() {
-    when(worldStateStorage.isWorldStateAvailable(any(), any())).thenReturn(true);
+  public void setup(final DataStorageFormat storageFormat) {
+    when(worldStateStorageCoordinator.getDataStorageFormat()).thenReturn(storageFormat);
+    when(worldStateStorageCoordinator.isWorldStateAvailable(any(), any())).thenReturn(true);
     final BlockchainSetupUtil localBlockchainSetup = BlockchainSetupUtil.forTesting(storageFormat);
     localBlockchain = localBlockchainSetup.getBlockchain();
     otherBlockchainSetup = BlockchainSetupUtil.forTesting(storageFormat);
@@ -97,7 +93,7 @@ public class FastSyncChainDownloaderTest {
     syncState = new SyncState(protocolContext.getBlockchain(), ethContext.getEthPeers());
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     ethProtocolManager.stop();
   }
@@ -106,7 +102,7 @@ public class FastSyncChainDownloaderTest {
       final SynchronizerConfiguration syncConfig, final long pivotBlockNumber) {
     return FastSyncChainDownloader.create(
         syncConfig,
-        worldStateStorage,
+        worldStateStorageCoordinator,
         protocolSchedule,
         protocolContext,
         ethContext,
@@ -115,8 +111,10 @@ public class FastSyncChainDownloaderTest {
         new FastSyncState(otherBlockchain.getBlockHeader(pivotBlockNumber).get()));
   }
 
-  @Test
-  public void shouldSyncToPivotBlockInMultipleSegments() {
+  @ParameterizedTest
+  @ArgumentsSource(FastSyncChainDownloaderTestArguments.class)
+  public void shouldSyncToPivotBlockInMultipleSegments(final DataStorageFormat storageFormat) {
+    setup(storageFormat);
     otherBlockchainSetup.importFirstBlocks(30);
 
     final RespondingEthPeer peer =
@@ -141,8 +139,10 @@ public class FastSyncChainDownloaderTest {
         .isEqualTo(otherBlockchain.getBlockHeader(pivotBlockNumber).get());
   }
 
-  @Test
-  public void shouldSyncToPivotBlockInSingleSegment() {
+  @ParameterizedTest
+  @ArgumentsSource(FastSyncChainDownloaderTestArguments.class)
+  public void shouldSyncToPivotBlockInSingleSegment(final DataStorageFormat storageFormat) {
+    setup(storageFormat);
     otherBlockchainSetup.importFirstBlocks(30);
 
     final RespondingEthPeer peer =
@@ -163,8 +163,10 @@ public class FastSyncChainDownloaderTest {
         .isEqualTo(otherBlockchain.getBlockHeader(pivotBlockNumber).get());
   }
 
-  @Test
-  public void recoversFromSyncTargetDisconnect() {
+  @ParameterizedTest
+  @ArgumentsSource(FastSyncChainDownloaderTestArguments.class)
+  public void recoversFromSyncTargetDisconnect(final DataStorageFormat storageFormat) {
+    setup(storageFormat);
     final BlockchainSetupUtil shorterChainUtil = BlockchainSetupUtil.forTesting(storageFormat);
     final MutableBlockchain shorterChain = shorterChainUtil.getBlockchain();
 

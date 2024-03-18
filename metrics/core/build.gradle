@@ -48,11 +48,11 @@ dependencies {
   implementation 'io.netty:netty-all'
   implementation 'io.opentelemetry:opentelemetry-api'
   implementation 'io.opentelemetry:opentelemetry-sdk'
-  implementation 'io.opentelemetry:opentelemetry-semconv'
   implementation 'io.opentelemetry:opentelemetry-sdk-trace'
   implementation 'io.opentelemetry:opentelemetry-sdk-metrics'
   implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
   implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure'
+  implementation 'io.opentelemetry.semconv:opentelemetry-semconv'
 
   implementation 'io.prometheus:simpleclient'
   implementation 'io.prometheus:simpleclient_common'
@@ -65,12 +65,10 @@ dependencies {
   testImplementation project(':util')
 
   testImplementation 'com.squareup.okhttp3:okhttp'
-  testImplementation 'junit:junit'
   testImplementation 'org.assertj:assertj-core'
   testImplementation 'org.junit.jupiter:junit-jupiter'
   testImplementation 'org.mockito:mockito-core'
-
-  testRuntimeOnly 'org.junit.vintage:junit-vintage-engine'
+  testImplementation 'org.mockito:mockito-junit-jupiter'
 
   testSupportImplementation 'org.mockito:mockito-core'
 

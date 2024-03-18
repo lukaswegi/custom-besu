@@ -15,7 +15,7 @@
 package org.hyperledger.besu.ethereum.eth.transactions;
 
 import static java.util.Collections.singletonList;
-import static org.assertj.core.util.Preconditions.checkNotNull;
+import static java.util.Objects.requireNonNull;
 import static org.hyperledger.besu.ethereum.core.InMemoryKeyValueStorageProvider.createInMemoryBlockchain;
 import static org.hyperledger.besu.ethereum.core.InMemoryKeyValueStorageProvider.createInMemoryWorldStateArchive;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -26,8 +26,8 @@ import org.hyperledger.besu.config.GenesisConfigFile;
 import org.hyperledger.besu.crypto.KeyPair;
 import org.hyperledger.besu.cryptoservices.NodeKey;
 import org.hyperledger.besu.cryptoservices.NodeKeyUtils;
-import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.ethereum.ProtocolContext;
+import org.hyperledger.besu.ethereum.chain.BadBlockManager;
 import org.hyperledger.besu.ethereum.chain.GenesisState;
 import org.hyperledger.besu.ethereum.chain.MutableBlockchain;
 import org.hyperledger.besu.ethereum.core.BlockHeaderFunctions;
@@ -96,8 +96,8 @@ public class TestNode implements Closeable {
       final Integer port,
       final KeyPair kp,
       final DiscoveryConfiguration discoveryCfg) {
-    checkNotNull(vertx);
-    checkNotNull(discoveryCfg);
+    requireNonNull(vertx);
+    requireNonNull(discoveryCfg);
 
     final int listenPort = port != null ? port : 0;
     this.nodeKey = kp != null ? NodeKeyUtils.createFrom(kp) : NodeKeyUtils.generate();
@@ -113,7 +113,11 @@ public class TestNode implements Closeable {
     final GenesisConfigFile genesisConfigFile = GenesisConfigFile.development();
     final ProtocolSchedule protocolSchedule =
         FixedDifficultyProtocolSchedule.create(
-            GenesisConfigFile.development().getConfigOptions(), false, EvmConfiguration.DEFAULT);
+            GenesisConfigFile.development().getConfigOptions(),
+            false,
+            EvmConfiguration.DEFAULT,
+            MiningParameters.MINING_DISABLED,
+            new BadBlockManager());
 
     final GenesisState genesisState = GenesisState.fromConfig(genesisConfigFile, protocolSchedule);
     final BlockHeaderFunctions blockHeaderFunctions =
@@ -123,7 +127,7 @@ public class TestNode implements Closeable {
     final WorldStateArchive worldStateArchive = createInMemoryWorldStateArchive();
     genesisState.writeStateTo(worldStateArchive.getMutable());
     final ProtocolContext protocolContext =
-        new ProtocolContext(blockchain, worldStateArchive, null);
+        new ProtocolContext(blockchain, worldStateArchive, null, new BadBlockManager());
 
     final SyncState syncState = mock(SyncState.class);
     final SynchronizerConfiguration syncConfig = mock(SynchronizerConfiguration.class);
@@ -149,7 +153,6 @@ public class TestNode implements Closeable {
             Bytes.random(64),
             25,
             25,
-            25,
             false);
 
     final EthScheduler scheduler = new EthScheduler(1, 1, 1, metricsSystem);
@@ -163,8 +166,9 @@ public class TestNode implements Closeable {
             TestClock.system(ZoneId.systemDefault()),
             metricsSystem,
             syncState,
-            new MiningParameters.Builder().minTransactionGasPrice(Wei.ZERO).build(),
-            TransactionPoolConfiguration.DEFAULT);
+            TransactionPoolConfiguration.DEFAULT,
+            new BlobCache(),
+            MiningParameters.newDefault());
 
     final EthProtocolManager ethProtocolManager =
         new EthProtocolManager(
@@ -269,6 +273,6 @@ public class TestNode implements Closeable {
   }
 
   public int getPendingTransactionCount() {
-    return transactionPool.getPendingTransactions().size();
+    return transactionPool.count();
   }
 }

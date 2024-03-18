@@ -15,17 +15,18 @@
 package org.hyperledger.besu.ethereum.p2p.discovery;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.hyperledger.besu.crypto.Hash;
 import org.hyperledger.besu.crypto.SignatureAlgorithm;
 import org.hyperledger.besu.crypto.SignatureAlgorithmFactory;
 import org.hyperledger.besu.cryptoservices.NodeKey;
+import org.hyperledger.besu.ethereum.chain.VariablesStorage;
 import org.hyperledger.besu.ethereum.forkid.ForkIdManager;
 import org.hyperledger.besu.ethereum.p2p.config.DiscoveryConfiguration;
 import org.hyperledger.besu.ethereum.p2p.discovery.internal.Packet;
 import org.hyperledger.besu.ethereum.p2p.discovery.internal.PeerDiscoveryController;
 import org.hyperledger.besu.ethereum.p2p.discovery.internal.PeerRequirement;
+import org.hyperledger.besu.ethereum.p2p.discovery.internal.PeerTable;
 import org.hyperledger.besu.ethereum.p2p.discovery.internal.PingPacketData;
 import org.hyperledger.besu.ethereum.p2p.discovery.internal.TimerUtil;
 import org.hyperledger.besu.ethereum.p2p.peers.EnodeURLImpl;
@@ -34,12 +35,9 @@ import org.hyperledger.besu.ethereum.p2p.peers.PeerId;
 import org.hyperledger.besu.ethereum.p2p.permissions.PeerPermissions;
 import org.hyperledger.besu.ethereum.p2p.rlpx.RlpxAgent;
 import org.hyperledger.besu.ethereum.storage.StorageProvider;
-import org.hyperledger.besu.ethereum.storage.keyvalue.KeyValueSegmentIdentifier;
 import org.hyperledger.besu.nat.NatService;
 import org.hyperledger.besu.plugin.data.EnodeURL;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
-import org.hyperledger.besu.plugin.services.storage.KeyValueStorage;
-import org.hyperledger.besu.plugin.services.storage.KeyValueStorageTransaction;
 import org.hyperledger.besu.util.NetworkUtility;
 
 import java.net.InetSocketAddress;
@@ -70,14 +68,12 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class PeerDiscoveryAgent {
   private static final Logger LOG = LoggerFactory.getLogger(PeerDiscoveryAgent.class);
-  private static final String SEQ_NO_STORE_KEY = "local-enr-seqno";
   private static final com.google.common.base.Supplier<SignatureAlgorithm> SIGNATURE_ALGORITHM =
       Suppliers.memoize(SignatureAlgorithmFactory::getInstance);
 
   // The devp2p specification says only accept packets up to 1280, but some
   // clients ignore that, so we add in a little extra padding.
   private static final int MAX_PACKET_SIZE_BYTES = 1600;
-
   protected final List<DiscoveryPeer> bootstrapPeers;
   private final List<PeerRequirement> peerRequirements = new CopyOnWriteArrayList<>();
   private final PeerPermissions peerPermissions;
@@ -85,6 +81,8 @@ public abstract class PeerDiscoveryAgent {
   private final MetricsSystem metricsSystem;
   private final RlpxAgent rlpxAgent;
   private final ForkIdManager forkIdManager;
+  private final PeerTable peerTable;
+  private static final boolean isIpv6Available = NetworkUtility.isIPv6Available();
 
   /* The peer controller, which takes care of the state machine of peers. */
   protected Optional<PeerDiscoveryController> controller = Optional.empty();
@@ -101,7 +99,7 @@ public abstract class PeerDiscoveryAgent {
 
   /* Is discovery enabled? */
   private boolean isActive = false;
-  private final StorageProvider storageProvider;
+  private final VariablesStorage variablesStorage;
   private final Supplier<List<Bytes>> forkIdSupplier;
   private String advertisedAddress;
 
@@ -113,7 +111,8 @@ public abstract class PeerDiscoveryAgent {
       final MetricsSystem metricsSystem,
       final StorageProvider storageProvider,
       final ForkIdManager forkIdManager,
-      final RlpxAgent rlpxAgent) {
+      final RlpxAgent rlpxAgent,
+      final PeerTable peerTable) {
     this.metricsSystem = metricsSystem;
     checkArgument(nodeKey != null, "nodeKey cannot be null");
     checkArgument(config != null, "provided configuration cannot be null");
@@ -130,10 +129,11 @@ public abstract class PeerDiscoveryAgent {
 
     this.id = nodeKey.getPublicKey().getEncodedBytes();
 
-    this.storageProvider = storageProvider;
+    this.variablesStorage = storageProvider.createVariablesStorage();
     this.forkIdManager = forkIdManager;
     this.forkIdSupplier = () -> forkIdManager.getForkIdForChainHead().getForkIdAsBytesList();
     this.rlpxAgent = rlpxAgent;
+    this.peerTable = peerTable;
   }
 
   protected abstract TimerUtil createTimer();
@@ -187,14 +187,9 @@ public abstract class PeerDiscoveryAgent {
       return;
     }
 
-    final KeyValueStorage keyValueStorage =
-        storageProvider.getStorageBySegmentIdentifier(KeyValueSegmentIdentifier.BLOCKCHAIN);
     final NodeRecordFactory nodeRecordFactory = NodeRecordFactory.DEFAULT;
     final Optional<NodeRecord> existingNodeRecord =
-        keyValueStorage
-            .get(Bytes.of(SEQ_NO_STORE_KEY.getBytes(UTF_8)).toArray())
-            .map(Bytes::of)
-            .map(nodeRecordFactory::fromBytes);
+        variablesStorage.getLocalEnrSeqno().map(nodeRecordFactory::fromBytes);
 
     final Bytes addressBytes = Bytes.of(InetAddresses.forString(advertisedAddress).getAddress());
     final Optional<EnodeURL> maybeEnodeURL = localNode.map(DiscoveryPeer::getEnodeURL);
@@ -236,12 +231,10 @@ public abstract class PeerDiscoveryAgent {
                           .slice(0, 64));
 
                   LOG.info("Writing node record to disk. {}", nodeRecord);
-                  final KeyValueStorageTransaction keyValueStorageTransaction =
-                      keyValueStorage.startTransaction();
-                  keyValueStorageTransaction.put(
-                      Bytes.wrap(SEQ_NO_STORE_KEY.getBytes(UTF_8)).toArray(),
-                      nodeRecord.serialize().toArray());
-                  keyValueStorageTransaction.commit();
+                  final var variablesUpdater = variablesStorage.updater();
+                  variablesUpdater.setLocalEnrSeqno(nodeRecord.serialize());
+                  variablesUpdater.commit();
+
                   return nodeRecord;
                 });
     localNode
@@ -274,9 +267,9 @@ public abstract class PeerDiscoveryAgent {
         .peerRequirement(PeerRequirement.combine(peerRequirements))
         .peerPermissions(peerPermissions)
         .metricsSystem(metricsSystem)
-        .forkIdManager(forkIdManager)
         .filterOnEnrForkId((config.isFilterOnEnrForkIdEnabled()))
         .rlpxAgent(rlpxAgent)
+        .peerTable(peerTable)
         .build();
   }
 
@@ -293,8 +286,9 @@ public abstract class PeerDiscoveryAgent {
             .flatMap(Endpoint::getTcpPort)
             .orElse(udpPort);
 
+    final String host = deriveHost(sourceEndpoint, packet);
+
     // Notify the peer controller.
-    final String host = sourceEndpoint.getHost();
     final DiscoveryPeer peer =
         DiscoveryPeer.fromEnode(
             EnodeURLImpl.builder()
@@ -305,6 +299,53 @@ public abstract class PeerDiscoveryAgent {
                 .build());
 
     controller.ifPresent(c -> c.onMessage(packet, peer));
+  }
+
+  /**
+   * method to derive the host from the source endpoint and the P2P PING packet. If the host is
+   * present in the P2P PING packet itself, use that as the endpoint. If the P2P PING packet
+   * specifies 127.0.0.1 (the default if a custom value is not specified with --p2p-host or via a
+   * suitable --nat-method) we ignore it in favour of the UDP source address. Some implementations
+   * send 127.0.0.1 or 255.255.255.255 anyway, but this reduces the chance of an unexpected change
+   * in behaviour as a result of https://github.com/hyperledger/besu/issues/6224 being fixed.
+   *
+   * @param sourceEndpoint source endpoint of the packet
+   * @param packet P2P PING packet
+   * @return host address as string
+   */
+  static String deriveHost(final Endpoint sourceEndpoint, final Packet packet) {
+    final Optional<String> pingPacketHost =
+        packet
+            .getPacketData(PingPacketData.class)
+            .flatMap(PingPacketData::getFrom)
+            .map(Endpoint::getHost);
+
+    return pingPacketHost
+        // fall back to source endpoint "from" if ping packet from address does not satisfy filters
+        .filter(InetAddresses::isInetAddress)
+        .filter(h -> !NetworkUtility.isUnspecifiedAddress(h))
+        .filter(h -> !NetworkUtility.isLocalhostAddress(h))
+        .filter(h -> isIpv6Available || !NetworkUtility.isIpV6Address(h))
+        .stream()
+        .peek(
+            h ->
+                LOG.atTrace()
+                    .setMessage(
+                        "Using \"From\" endpoint {} specified in ping packet. Ignoring UDP source host {}")
+                    .addArgument(h)
+                    .addArgument(sourceEndpoint::getHost)
+                    .log())
+        .findFirst()
+        .orElseGet(
+            () -> {
+              LOG.atTrace()
+                  .setMessage(
+                      "Ignoring \"From\" endpoint {} in ping packet. Using UDP source host {}")
+                  .addArgument(pingPacketHost.orElse("not specified"))
+                  .addArgument(sourceEndpoint.getHost())
+                  .log();
+              return sourceEndpoint.getHost();
+            });
   }
 
   /**

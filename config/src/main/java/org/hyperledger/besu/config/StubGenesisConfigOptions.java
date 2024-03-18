@@ -14,6 +14,7 @@
  */
 package org.hyperledger.besu.config;
 
+import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
 
@@ -47,6 +48,7 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   private OptionalLong mergeNetSplitBlockNumber = OptionalLong.empty();
   private OptionalLong shanghaiTime = OptionalLong.empty();
   private OptionalLong cancunTime = OptionalLong.empty();
+  private OptionalLong pragueTime = OptionalLong.empty();
   private OptionalLong futureEipsTime = OptionalLong.empty();
   private OptionalLong experimentalEipsTime = OptionalLong.empty();
   private OptionalLong terminalBlockNumber = OptionalLong.empty();
@@ -65,6 +67,7 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   private OptionalLong thanosBlockNumber = OptionalLong.empty();
   private OptionalLong magnetoBlockNumber = OptionalLong.empty();
   private OptionalLong mystiqueBlockNumber = OptionalLong.empty();
+  private OptionalLong spiralBlockNumber = OptionalLong.empty();
   private Optional<BigInteger> chainId = Optional.empty();
   private OptionalInt contractSizeLimit = OptionalInt.empty();
   private OptionalInt stackSizeLimit = OptionalInt.empty();
@@ -75,6 +78,7 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   private TransitionsConfigOptions transitions = TransitionsConfigOptions.DEFAULT;
   private static final DiscoveryOptions DISCOVERY_OPTIONS = DiscoveryOptions.DEFAULT;
   private boolean zeroBaseFee = false;
+  private boolean fixedBaseFee = false;
 
   @Override
   public StubGenesisConfigOptions clone() {
@@ -116,13 +120,18 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   }
 
   @Override
+  public boolean isPoa() {
+    return false;
+  }
+
+  @Override
   public CheckpointConfigOptions getCheckpointOptions() {
     return CheckpointConfigOptions.DEFAULT;
   }
 
   @Override
-  public CliqueConfigOptions getCliqueConfigOptions() {
-    return CliqueConfigOptions.DEFAULT;
+  public JsonCliqueConfigOptions getCliqueConfigOptions() {
+    return JsonCliqueConfigOptions.DEFAULT;
   }
 
   @Override
@@ -226,6 +235,11 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   }
 
   @Override
+  public OptionalLong getPragueTime() {
+    return pragueTime;
+  }
+
+  @Override
   public OptionalLong getFutureEipsTime() {
     return futureEipsTime;
   }
@@ -311,6 +325,11 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   }
 
   @Override
+  public OptionalLong getSpiralBlockNumber() {
+    return spiralBlockNumber;
+  }
+
+  @Override
   public OptionalInt getContractSizeLimit() {
     return contractSizeLimit;
   }
@@ -352,6 +371,7 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
     getMergeNetSplitBlockNumber().ifPresent(l -> builder.put("mergeNetSplitBlock", l));
     getShanghaiTime().ifPresent(l -> builder.put("shanghaiTime", l));
     getCancunTime().ifPresent(l -> builder.put("cancunTime", l));
+    getPragueTime().ifPresent(l -> builder.put("pragueTime", l));
     getFutureEipsTime().ifPresent(l -> builder.put("futureEipsTime", l));
     getExperimentalEipsTime().ifPresent(l -> builder.put("experimentalEipsTime", l));
     getTerminalBlockNumber().ifPresent(l -> builder.put("terminalBlockNumber", l));
@@ -368,9 +388,11 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
     getThanosBlockNumber().ifPresent(l -> builder.put("thanosBlock", l));
     getMagnetoBlockNumber().ifPresent(l -> builder.put("magnetoBlock", l));
     getMystiqueBlockNumber().ifPresent(l -> builder.put("mystiqueBlock", l));
+    getSpiralBlockNumber().ifPresent(l -> builder.put("spiralBlock", l));
 
     getContractSizeLimit().ifPresent(l -> builder.put("contractSizeLimit", l));
     getEvmStackSize().ifPresent(l -> builder.put("evmStackSize", l));
+    getDepositContractAddress().ifPresent(l -> builder.put("depositContractAddress", l));
     if (isClique()) {
       builder.put("clique", getCliqueConfigOptions().asMap());
     }
@@ -389,16 +411,6 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   }
 
   @Override
-  public boolean isQuorum() {
-    return false;
-  }
-
-  @Override
-  public OptionalLong getQip714BlockNumber() {
-    return OptionalLong.empty();
-  }
-
-  @Override
   public PowAlgorithm getPowAlgorithm() {
     return isEthHash() ? PowAlgorithm.ETHASH : PowAlgorithm.UNSUPPORTED;
   }
@@ -414,6 +426,11 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   }
 
   @Override
+  public boolean isFixedBaseFee() {
+    return fixedBaseFee;
+  }
+
+  @Override
   public List<Long> getForkBlockNumbers() {
     return Collections.emptyList();
   }
@@ -421,6 +438,11 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   @Override
   public List<Long> getForkBlockTimestamps() {
     return Collections.emptyList();
+  }
+
+  @Override
+  public Optional<Address> getDepositContractAddress() {
+    return Optional.empty();
   }
 
   /**
@@ -600,6 +622,17 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
   }
 
   /**
+   * Prague time.
+   *
+   * @param timestamp the timestamp
+   * @return the stub genesis config options
+   */
+  public StubGenesisConfigOptions pragueTime(final long timestamp) {
+    pragueTime = OptionalLong.of(timestamp);
+    return this;
+  }
+
+  /**
    * Future EIPs Time block.
    *
    * @param timestamp the block timestamp
@@ -674,6 +707,17 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
    */
   public StubGenesisConfigOptions zeroBaseFee(final boolean zeroBaseFee) {
     this.zeroBaseFee = zeroBaseFee;
+    return this;
+  }
+
+  /**
+   * Fixed base fee per gas stub genesis config options.
+   *
+   * @param fixedBaseFee the zero base fee override
+   * @return the stub genesis config options
+   */
+  public StubGenesisConfigOptions fixedBaseFee(final boolean fixedBaseFee) {
+    this.fixedBaseFee = fixedBaseFee;
     return this;
   }
 
@@ -795,6 +839,17 @@ public class StubGenesisConfigOptions implements GenesisConfigOptions, Cloneable
    */
   public StubGenesisConfigOptions mystique(final long blockNumber) {
     mystiqueBlockNumber = OptionalLong.of(blockNumber);
+    return this;
+  }
+
+  /**
+   * Spiral stub genesis config options.
+   *
+   * @param blockNumber the block number
+   * @return the stub genesis config options
+   */
+  public StubGenesisConfigOptions spiral(final long blockNumber) {
+    spiralBlockNumber = OptionalLong.of(blockNumber);
     return this;
   }
 

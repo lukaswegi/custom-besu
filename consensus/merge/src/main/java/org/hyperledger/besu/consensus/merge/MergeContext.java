@@ -157,10 +157,9 @@ public interface MergeContext extends ConsensusContext {
   /**
    * Put payload by Identifier.
    *
-   * @param payloadId the payload identifier
-   * @param blockWithReceipts the block with receipts
+   * @param payloadWrapper payload wrapper
    */
-  void putPayloadById(final PayloadIdentifier payloadId, final BlockWithReceipts blockWithReceipts);
+  void putPayloadById(final PayloadWrapper payloadWrapper);
 
   /**
    * Retrieve block by id.
@@ -169,29 +168,6 @@ public interface MergeContext extends ConsensusContext {
    * @return the optional block with receipts
    */
   Optional<BlockWithReceipts> retrieveBlockById(final PayloadIdentifier payloadId);
-
-  /**
-   * Sets is chain pruning enabled.
-   *
-   * @param isChainPruningEnabled the is chain pruning enabled
-   */
-  default void setIsChainPruningEnabled(final boolean isChainPruningEnabled) {}
-
-  /**
-   * Is chain pruning enabled.
-   *
-   * @return the boolean
-   */
-  default boolean isChainPruningEnabled() {
-    return false;
-  }
-
-  /**
-   * Is checkpoint post merge sync.
-   *
-   * @return the boolean
-   */
-  boolean isCheckpointPostMergeSync();
 
   /**
    * Is configured for a post-merge from genesis.

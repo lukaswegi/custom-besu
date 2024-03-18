@@ -22,9 +22,9 @@ import org.hyperledger.besu.evm.gascalculator.GasCalculator;
 public class RetFOperation extends AbstractOperation {
 
   /** The Opcode. */
-  public static final int OPCODE = 0xb1;
+  public static final int OPCODE = 0xe4;
   /** The Ret F success. */
-  static final OperationResult retfSuccess = new OperationResult(4, null);
+  static final OperationResult retfSuccess = new OperationResult(3, null);
 
   /**
    * Instantiates a new Ret F operation.
