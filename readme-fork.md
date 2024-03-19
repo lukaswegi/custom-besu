@@ -5,6 +5,7 @@
 
 
 build/install/besu/bin/besu \
+    --network=sepolia \
     --rpc-http-enabled=true \
     --rpc-http-host=0.0.0.0 \
     --rpc-http-port=8554 \
