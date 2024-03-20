@@ -13,7 +13,7 @@ build/install/besu/bin/besu \
     --rpc-ws-enabled=true \
     --rpc-ws-host=0.0.0.0 \
     --rpc-ws-port=30307 \
-    --rpc-http-api=ETH,NET,WEB3,ADMIN \
+    --rpc-http-api=ETH,NET,WEB3,ADMIN,DEBUG \
     --engine-jwt-disabled=true \
     --engine-rpc-port=8558 \
     --p2p-port=30308 \
@@ -29,7 +29,7 @@ build/install/teku/bin/teku \
     --ee-endpoint=http://localhost:8558          \
     --metrics-enabled=true                       \
     --rest-api-enabled=true                      \
-    --checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io \
+    --checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io 
 
 
     
