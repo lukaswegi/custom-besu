@@ -95,7 +95,7 @@ public class BlockHeaderBuilder {
         .receiptsRoot(Hash.EMPTY)
         .logsBloom(LogsBloomFilter.empty())
         .gasUsed(0)
-        .extraData(Bytes.fromHexString("This is a fork!"))
+        .extraData(Bytes.EMPTY)
         .mixHash(Hash.EMPTY)
         .nonce(0)
         .blockHeaderFunctions(new MainnetBlockHeaderFunctions());
